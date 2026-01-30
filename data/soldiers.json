@@ -1,0 +1,73 @@
+{
+    "soldiers": [
+        {
+            "id": 1,
+            "danger": 1
+        },
+        {
+            "id": 2,
+            "danger": 1
+        },
+        {
+            "id": 3,
+            "danger": 1
+        },
+        {
+            "id": 4,
+            "danger": 1
+        },
+        {
+            "id": 5,
+            "danger": 2
+        },
+        {
+            "id": 6,
+            "danger": 1
+        },
+        {
+            "id": 7,
+            "danger": 1
+        },
+        {
+            "id": 8,
+            "danger": 1
+        },
+        {
+            "id": 9,
+            "danger": 1
+        },
+        {
+            "id": 10,
+            "danger": 3
+        },
+        {
+            "id": 11,
+            "danger": 5
+        },
+        {
+            "id": 22,
+            "danger": 5
+        },
+        {
+            "id": 33,
+            "danger": 5
+        },
+        {
+            "id": 44,
+            "danger": 5
+        },
+        {
+            "id": 55,
+            "danger": 7
+        },
+        {
+            "id": 66,
+            "danger": 5
+        },
+        {
+            "id": 77,
+            "danger": 5
+        }
+    ],
+    "note": "Complete soldier data (1-104) will be generated based on 6 Nimmt rules. Cards ending in 5 have 2 danger, cards ending in 0 have 3 danger, double digits (11,22,33...) have 5 danger, and 55 has 7 danger."
+}
