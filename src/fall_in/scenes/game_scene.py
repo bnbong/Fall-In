@@ -13,6 +13,8 @@ from fall_in.core.board import Board
 from fall_in.core.player import Player, PlayerType, create_players
 from fall_in.core.rules import GameRules, RoundPhase, TurnResult
 from fall_in.ai.ai_player import AIPlayer, create_ai_players
+from fall_in.entities.soldier_figure import SoldierFigure
+from fall_in.entities.commander import Commander
 from fall_in.config import (
     SCREEN_WIDTH, SCREEN_HEIGHT,
     AIR_FORCE_BLUE, WHITE, LIGHT_BLUE, SAND_BEIGE,
@@ -73,6 +75,9 @@ class GameScene(Scene):
         self.message = ""
         self.message_timer = 0.0
         
+        # Commander (left side)
+        self.commander = Commander(x=80, y=380)
+        
         # Start round
         self._start_new_round()
     
@@ -109,10 +114,9 @@ class GameScene(Scene):
         x: int, 
         y: int, 
         color: tuple,
-        border_color: tuple = AIR_FORCE_BLUE,
-        card: Optional[Card] = None
+        border_color: tuple = AIR_FORCE_BLUE
     ) -> None:
-        """Draw a single isometric tile with optional card"""
+        """Draw a single isometric tile (empty slot)"""
         iso_x, iso_y = self._cart_to_iso(x, y)
         
         # Diamond points
@@ -125,25 +129,16 @@ class GameScene(Scene):
         
         pygame.draw.polygon(screen, color, points)
         pygame.draw.polygon(screen, border_color, points, width=2)
-        
-        # Draw card number if present
-        if card:
-            font = get_font(14)
-            text = font.render(str(card.number), True, AIR_FORCE_BLUE)
-            text_rect = text.get_rect(center=(iso_x, iso_y))
-            screen.blit(text, text_rect)
     
     def _draw_board(self, screen: pygame.Surface) -> None:
-        """Draw the isometric game board (bottom-left ascending)"""
+        """Draw the isometric game board with soldier figures"""
         board = self.rules.board
         
-        # Draw rows: row 0 at bottom-left, row 3 at top-right
-        # Columns: col 0 at left (bottom), growing towards right (top)
+        # First pass: draw all tiles (back to front for z-order)
         for row_idx in range(NUM_ROWS):
-            row = board.rows[row_idx]
-            
             for col in range(MAX_CARDS_PER_ROW + 1):
                 visual_col = MAX_CARDS_PER_ROW - col
+                row = board.rows[row_idx]
                 
                 if col < len(row):
                     card = row[col]
@@ -155,80 +150,119 @@ class GameScene(Scene):
                     else:
                         color = DANGER_DANGER
                     color = tuple(min(255, c + 60) for c in color)
-                    self._draw_isometric_tile(screen, visual_col, row_idx, color, card=card)
                 else:
                     color = (235, 225, 210)
-                    self._draw_isometric_tile(screen, visual_col, row_idx, color)
+                
+                self._draw_isometric_tile(screen, visual_col, row_idx, color)
+        
+        # Second pass: draw soldier figures
+        # Sort by isometric depth: draw back (low row + high visual_col) first
+        # Collect all cards with positions
+        soldiers_to_draw = []
+        for row_idx in range(NUM_ROWS):
+            row = board.rows[row_idx]
+            for col in range(len(row)):
+                visual_col = MAX_CARDS_PER_ROW - col
+                card = row[col]
+                iso_x, iso_y = self._cart_to_iso(visual_col, row_idx)
+                # Depth: higher iso_y = more in front
+                depth = iso_y
+                soldiers_to_draw.append((depth, iso_x, iso_y, card))
+        
+        # Sort by depth (draw smaller iso_y first = back)
+        soldiers_to_draw.sort(key=lambda s: s[0])
+        
+        for depth, iso_x, iso_y, card in soldiers_to_draw:
+            figure = SoldierFigure(card)
+            figure.render(screen, iso_x, iso_y, ISO_TILE_HEIGHT)
     
     def _draw_ui(self, screen: pygame.Surface) -> None:
-        """Draw UI elements"""
-        font = get_font(22)
-        small_font = get_font(16)
+        """Draw UI elements with new layout"""
+        title_font = get_font(24, "bold")
+        font = get_font(18)
+        small_font = get_font(14)
         mini_font = get_font(12)
         
-        # Round indicator
-        round_text = font.render(f"라운드 {self.rules.round_state.round_number}", True, AIR_FORCE_BLUE)
-        screen.blit(round_text, (20, 20))
+        # === TOP BAR (Left to Right) ===
+        top_y = 15
         
-        # Player order display
-        order_y = 55
-        order_text = small_font.render("순서:", True, AIR_FORCE_BLUE)
-        screen.blit(order_text, (20, order_y))
+        # 1. Round indicator (left)
+        round_text = title_font.render(f"ROUND {self.rules.round_state.round_number}", True, AIR_FORCE_BLUE)
+        screen.blit(round_text, (20, top_y))
         
-        for i, player in enumerate(self.rules.player_order):
-            order_idx_text = mini_font.render(
-                f"{i+1}.{player.name[:2]}", 
-                True, 
-                WHITE if player == self.human_player else AIR_FORCE_BLUE
-            )
-            bg_color = AIR_FORCE_BLUE if player == self.human_player else LIGHT_BLUE
-            order_rect = pygame.Rect(75 + i * 55, order_y - 2, 50, 20)
-            pygame.draw.rect(screen, bg_color, order_rect, border_radius=3)
-            screen.blit(order_idx_text, (80 + i * 55, order_y))
+        # 2. Hangar icon + penalty cards count
+        hangar_x = 160
+        # Hangar placeholder (trapezoid shape)
+        hangar_points = [
+            (hangar_x, top_y + 25),
+            (hangar_x + 15, top_y + 5),
+            (hangar_x + 45, top_y + 5),
+            (hangar_x + 60, top_y + 25),
+        ]
+        pygame.draw.polygon(screen, AIR_FORCE_BLUE, hangar_points)
+        pygame.draw.polygon(screen, WHITE, hangar_points, width=2)
         
-        # Human player info box
-        player_rect = pygame.Rect(20, 85, 160, 120)
-        pygame.draw.rect(screen, AIR_FORCE_BLUE, player_rect, border_radius=10)
-        pygame.draw.rect(screen, WHITE, player_rect, width=2, border_radius=10)
-        
-        player_name = small_font.render(self.human_player.name, True, WHITE)
-        screen.blit(player_name, (player_rect.x + 10, player_rect.y + 8))
-        
-        # Committed score (previous rounds)
-        committed = self.rules.get_player_committed_score(self.human_player)
-        committed_text = mini_font.render(f"누적 위험도: {committed}", True, WHITE)
-        screen.blit(committed_text, (player_rect.x + 10, player_rect.y + 32))
-        
-        # Cards taken this round
         cards_taken = self.rules.get_player_round_penalty_count(self.human_player)
-        cards_text = mini_font.render(f"이번 라운드 벌칙: {cards_taken}장", True, WHITE)
-        screen.blit(cards_text, (player_rect.x + 10, player_rect.y + 52))
+        penalty_text = font.render(str(cards_taken), True, WHITE)
+        screen.blit(penalty_text, (hangar_x + 22, top_y + 30))
         
-        # Commander message
-        msg = self._get_commander_message()
-        msg_text = mini_font.render(msg, True, WHITE)
-        screen.blit(msg_text, (player_rect.x + 10, player_rect.y + 80))
+        # 3. Danger gauge (center-right)
+        committed = self.rules.get_player_committed_score(self.human_player)
+        gauge_x = SCREEN_WIDTH // 2 + 50
         
-        # AI players (right side)
+        # Warning icon placeholder
+        pygame.draw.polygon(screen, DANGER_DANGER, [
+            (gauge_x, top_y + 5),
+            (gauge_x - 12, top_y + 25),
+            (gauge_x + 12, top_y + 25),
+        ])
+        warning_text = small_font.render("!", True, WHITE)
+        screen.blit(warning_text, (gauge_x - 3, top_y + 8))
+        
+        # Danger score text
+        danger_text = font.render(f"{committed}/{GAME_OVER_SCORE}", True, AIR_FORCE_BLUE)
+        screen.blit(danger_text, (gauge_x + 20, top_y + 5))
+        
+        # Danger bar
+        bar_x = gauge_x + 80
+        bar_width = 100
+        bar_height = 16
+        fill_ratio = min(committed / GAME_OVER_SCORE, 1.0)
+        
+        pygame.draw.rect(screen, (200, 200, 200), (bar_x, top_y + 8, bar_width, bar_height), border_radius=3)
+        if fill_ratio > 0:
+            fill_color = self._get_danger_color(committed)
+            pygame.draw.rect(screen, fill_color, (bar_x, top_y + 8, int(bar_width * fill_ratio), bar_height), border_radius=3)
+        pygame.draw.rect(screen, AIR_FORCE_BLUE, (bar_x, top_y + 8, bar_width, bar_height), width=1, border_radius=3)
+        
+        # 4. Barracks icon (right side, placeholder)
+        barracks_x = SCREEN_WIDTH - 100
+        pygame.draw.rect(screen, LIGHT_BLUE, (barracks_x, top_y, 70, 35), border_radius=5)
+        pygame.draw.rect(screen, AIR_FORCE_BLUE, (barracks_x, top_y, 70, 35), width=2, border_radius=5)
+        barracks_text = mini_font.render("막사", True, AIR_FORCE_BLUE)
+        screen.blit(barracks_text, (barracks_x + 20, top_y + 10))
+        
+        # === AI PLAYERS (Right side below top bar) ===
         for i, player in enumerate(self.players[1:]):
-            ai_rect = pygame.Rect(SCREEN_WIDTH - 140, 20 + i * 80, 120, 70)
+            ai_rect = pygame.Rect(SCREEN_WIDTH - 100, 60 + i * 65, 85, 55)
             bg_color = DANGER_DANGER if player.is_eliminated else LIGHT_BLUE
-            pygame.draw.rect(screen, bg_color, ai_rect, border_radius=8)
-            pygame.draw.rect(screen, AIR_FORCE_BLUE, ai_rect, width=2, border_radius=8)
+            pygame.draw.rect(screen, bg_color, ai_rect, border_radius=6)
+            pygame.draw.rect(screen, AIR_FORCE_BLUE, ai_rect, width=2, border_radius=6)
             
+            # AI name with order
             order_pos = self.rules.get_player_order_position(player)
             ai_name = small_font.render(f"{order_pos}.{player.name}", True, WHITE)
-            screen.blit(ai_name, (ai_rect.x + 8, ai_rect.y + 6))
+            screen.blit(ai_name, (ai_rect.x + 5, ai_rect.y + 5))
             
-            # AI committed score
+            # AI score
             ai_committed = self.rules.get_player_committed_score(player)
-            ai_score = mini_font.render(f"위험도: {ai_committed}", True, WHITE)
-            screen.blit(ai_score, (ai_rect.x + 8, ai_rect.y + 28))
+            ai_score = mini_font.render(f"위험: {ai_committed}", True, WHITE)
+            screen.blit(ai_score, (ai_rect.x + 5, ai_rect.y + 23))
             
             # Cards this round
             ai_cards = self.rules.get_player_round_penalty_count(player)
             ai_cards_text = mini_font.render(f"벌칙: {ai_cards}장", True, WHITE)
-            screen.blit(ai_cards_text, (ai_rect.x + 8, ai_rect.y + 48))
+            screen.blit(ai_cards_text, (ai_rect.x + 5, ai_rect.y + 38))
         
         # Turn log (bottom left)
         if self.turn_log:
@@ -410,11 +444,13 @@ class GameScene(Scene):
         results = self.rules.execute_turn()
         self.turn_log = results
         
-        # Display results
+        # Display results and trigger commander speech
         penalties = [r for r in results if r.result.penalty_score > 0]
         if penalties:
             names = [r.player.name for r in penalties]
             self.message = f"벌점: {', '.join(names)}"
+            # Commander announces penalties
+            self.commander.say_penalty_taken()
         else:
             self.message = "카드 배치 완료!"
         self.message_timer = 1.5
@@ -442,6 +478,11 @@ class GameScene(Scene):
         if self.message_timer > 0:
             self.message_timer -= dt
         
+        # Update commander (expression based on danger)
+        committed = self.rules.get_player_committed_score(self.human_player)
+        self.commander.set_expression_from_danger(committed)
+        self.commander.update(dt)
+        
         if self.phase_timer > 0:
             self.phase_timer -= dt
             return
@@ -456,6 +497,9 @@ class GameScene(Scene):
     
     def render(self, screen: pygame.Surface) -> None:
         """Render scene to screen"""
+        # Draw commander first (behind board)
+        self.commander.render(screen)
+        
         self._draw_board(screen)
         self._draw_ui(screen)
         self._draw_hand(screen)
