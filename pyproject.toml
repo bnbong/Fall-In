@@ -15,6 +15,7 @@ dependencies = [
 dev = [
     "pytest>=8.0.0",
     "pytest-cov>=4.1.0",
+    "ruff>=0.14.14",
 ]
 
 [project.scripts]
@@ -30,4 +31,3 @@ packages = ["src/fall_in"]
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
-

@@ -1,6 +1,7 @@
 """
 Game configuration constants for 헤쳐 모여! (Fall In!)
 """
+
 from pathlib import Path
 
 # =============================================================================
@@ -15,16 +16,16 @@ GAME_TITLE = "헤쳐 모여! (Fall In!)"
 # Colors (Korean Air Force theme)
 # =============================================================================
 # Primary colors
-AIR_FORCE_BLUE = (30, 58, 95)       # #1E3A5F - 공군 블루
-LIGHT_BLUE = (70, 130, 180)         # #4682B4
-SAND_BEIGE = (245, 235, 220)        # #F5EBDC - 배경색
+AIR_FORCE_BLUE = (30, 58, 95)  # #1E3A5F - 공군 블루
+LIGHT_BLUE = (70, 130, 180)  # #4682B4
+SAND_BEIGE = (245, 235, 220)  # #F5EBDC - 배경색
 
 # Danger level colors
-DANGER_SAFE = (46, 204, 113)        # 안전 - 초록
-DANGER_CAUTION = (241, 196, 15)     # 주의 - 노랑
-DANGER_WARNING = (230, 126, 34)     # 경고 - 주황
-DANGER_DANGER = (231, 76, 60)       # 위험 - 빨강
-DANGER_CRITICAL = (142, 68, 173)    # 극한 - 보라
+DANGER_SAFE = (46, 204, 113)  # 안전 - 초록
+DANGER_CAUTION = (241, 196, 15)  # 주의 - 노랑
+DANGER_WARNING = (230, 126, 34)  # 경고 - 주황
+DANGER_DANGER = (231, 76, 60)  # 위험 - 빨강
+DANGER_CRITICAL = (142, 68, 173)  # 극한 - 보라
 
 # UI colors
 WHITE = (255, 255, 255)
@@ -35,16 +36,17 @@ DARK_GRAY = (64, 64, 64)
 # =============================================================================
 # Game Rules (젝스님트 based)
 # =============================================================================
-NUM_PLAYERS = 4              # 총 플레이어 수 (1 human + 3 AI)
-CARDS_PER_PLAYER = 10        # 손패 카드 수
-TOTAL_CARDS = 104            # 총 카드(병사) 수
-MAX_CARDS_PER_ROW = 5        # 열당 최대 카드 수
-NUM_ROWS = 4                 # 게임판 열 수
-GAME_OVER_SCORE = 66         # 탈락 점수
+NUM_PLAYERS = 4  # 총 플레이어 수 (1 human + 3 AI)
+CARDS_PER_PLAYER = 10  # 손패 카드 수
+TOTAL_CARDS = 104  # 총 카드(병사) 수
+MAX_CARDS_PER_ROW = 5  # 열당 최대 카드 수
+NUM_ROWS = 4  # 게임판 열 수
+GAME_OVER_SCORE = 66  # 탈락 점수
 
 # Danger levels for cards
 MIN_DANGER = 1
 MAX_DANGER = 7
+
 
 # =============================================================================
 # Asset Paths
@@ -53,19 +55,20 @@ def _find_project_root() -> Path:
     """Find the project root directory containing assets folder."""
     # Try from the config file location (development mode)
     config_dir = Path(__file__).parent  # fall_in/
-    
+
     # Go up to find project root with assets folder
     for parent in [config_dir.parent.parent, config_dir.parent, config_dir]:
         if (parent / "assets").exists():
             return parent
-    
+
     # Fallback: try current working directory
     cwd = Path.cwd()
     if (cwd / "assets").exists():
         return cwd
-    
+
     # Last resort: use the src parent
     return config_dir.parent.parent
+
 
 PROJECT_ROOT = _find_project_root()
 ASSETS_DIR = PROJECT_ROOT / "assets"
@@ -83,17 +86,19 @@ DEFAULT_SFX_VOLUME = 0.7
 # =============================================================================
 # Animation Settings
 # =============================================================================
-CARD_ANIMATION_SPEED = 8         # 카드 이동 속도
-SOLDIER_BOUNCE_SPEED = 0.1       # 병사 바운스 속도
-SOLDIER_BOUNCE_HEIGHT = 5        # 병사 바운스 높이
+CARD_ANIMATION_SPEED = 8  # 카드 이동 속도
+SOLDIER_BOUNCE_SPEED = 0.1  # 병사 바운스 속도
+SOLDIER_BOUNCE_HEIGHT = 5  # 병사 바운스 높이
 
 # =============================================================================
-# Isometric Settings
+# Isometric Settings - Adjusted to fit background sandy area
 # =============================================================================
-ISO_TILE_WIDTH = 80
-ISO_TILE_HEIGHT = 40
-BOARD_OFFSET_X = SCREEN_WIDTH // 2
-BOARD_OFFSET_Y = 180
+ISO_TILE_WIDTH = 135  # Larger tiles to fill sandy area
+ISO_TILE_HEIGHT = 68  # Visual height (2:1 ratio for diamond shape)
+ROW_SPACING = 12  # Spacing between rows (applied diagonally)
+BOARD_OFFSET_X = SCREEN_WIDTH // 2 + 50  # Center on sandy area
+BOARD_OFFSET_Y = 230  # Match sandy area vertical center
+
 
 # =============================================================================
 # AI Difficulty Settings

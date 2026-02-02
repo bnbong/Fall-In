@@ -1,6 +1,7 @@
 """
 Main entry point for 헤쳐 모여! (Fall In!)
 """
+
 from fall_in.core.game_manager import GameManager
 
 
