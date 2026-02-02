@@ -31,6 +31,7 @@ from fall_in.config import (
     MAX_CARDS_PER_ROW,
     ISO_TILE_WIDTH,
     ISO_TILE_HEIGHT,
+    ROW_SPACING,
     BOARD_OFFSET_X,
     BOARD_OFFSET_Y,
     GAME_OVER_SCORE,
@@ -193,10 +194,34 @@ class GameScene(Scene):
             self.turn_timer = TURN_TIMEOUT_SECONDS
             self.dealing_cards.clear()
 
+    ROW_OFFSETS = [
+        (0, 0),  # Row 0 - base position
+        (23, 0),  # Row 1 - slight right shift
+        (46, 0),  # Row 2 - more right shift
+        (69, 0),  # Row 3 - most right shift
+    ]
+
     def _cart_to_iso(self, x: int, y: int) -> tuple[int, int]:
-        """Convert cartesian coordinates to isometric with proper spacing"""
-        iso_x = BOARD_OFFSET_X + (y - x) * (ISO_TILE_WIDTH // 2)
-        iso_y = BOARD_OFFSET_Y + (x + y) * (ISO_TILE_HEIGHT // 2)
+        """Convert cartesian coordinates to isometric.
+
+        x = column position within row (card index)
+        y = row index (0-3 for the 4 game rows)
+
+        ROW_SPACING adds extra vertical space between rows only.
+        ROW_OFFSETS corrects position so first tiles align diagonally.
+        """
+        # Get row-specific offset
+        row_x_offset, row_y_offset = (
+            self.ROW_OFFSETS[y] if y < len(self.ROW_OFFSETS) else (0, 0)
+        )
+
+        iso_x = BOARD_OFFSET_X + (y - x) * (ISO_TILE_WIDTH // 2) + row_x_offset
+        iso_y = (
+            BOARD_OFFSET_Y
+            + (x + y) * (ISO_TILE_HEIGHT // 2)
+            + y * ROW_SPACING
+            + row_y_offset
+        )
         return iso_x, iso_y
 
     def _get_danger_color(self, score: int) -> tuple[int, int, int]:
@@ -280,6 +305,25 @@ class GameScene(Scene):
             figure = SoldierFigure(card)
             figure.render(screen, iso_x, iso_y, ISO_TILE_HEIGHT)
 
+    def _draw_outlined_text(
+        self,
+        screen: pygame.Surface,
+        text: str,
+        font: pygame.font.Font,
+        pos: tuple[int, int],
+        color: tuple[int, int, int],
+        outline_color: tuple[int, int, int] = WHITE,
+    ) -> None:
+        """Draw text with outline for better readability"""
+        x, y = pos
+        # Draw outline (white shadow in 4 directions)
+        outline_surface = font.render(text, True, outline_color)
+        for dx, dy in [(-1, -1), (-1, 1), (1, -1), (1, 1)]:
+            screen.blit(outline_surface, (x + dx, y + dy))
+        # Draw main text on top
+        text_surface = font.render(text, True, color)
+        screen.blit(text_surface, pos)
+
     def _draw_ui(self, screen: pygame.Surface) -> None:
         """Draw UI elements with new layout"""
         title_font = get_font(24, "bold")
@@ -287,14 +331,34 @@ class GameScene(Scene):
         small_font = get_font(14)
         mini_font = get_font(12)
 
+        # === TOP BAR BACKGROUND ===
+        top_bar_height = 70
+        top_bar_surface = pygame.Surface(
+            (SCREEN_WIDTH, top_bar_height), pygame.SRCALPHA
+        )
+        top_bar_surface.fill((30, 60, 90, 200))  # Semi-transparent dark blue
+        screen.blit(top_bar_surface, (0, 0))
+        # Top bar bottom border
+        pygame.draw.line(
+            screen,
+            AIR_FORCE_BLUE,
+            (0, top_bar_height),
+            (SCREEN_WIDTH, top_bar_height),
+            2,
+        )
+
         # === TOP BAR (Left to Right) ===
         top_y = 15
 
-        # 1. Round indicator (left)
-        round_text = title_font.render(
-            f"ROUND {self.rules.round_state.round_number}", True, AIR_FORCE_BLUE
+        # 1. Round indicator (left) - with outline for visibility
+        self._draw_outlined_text(
+            screen,
+            f"ROUND {self.rules.round_state.round_number}",
+            title_font,
+            (20, top_y),
+            WHITE,
+            (10, 30, 50),
         )
-        screen.blit(round_text, (20, top_y))
 
         # 2. Hangar icon + penalty cards count (next to round)
         hangar_x = 150
@@ -304,17 +368,24 @@ class GameScene(Scene):
             (hangar_x + 45, top_y + 5),
             (hangar_x + 60, top_y + 25),
         ]
-        pygame.draw.polygon(screen, AIR_FORCE_BLUE, hangar_points)
+        pygame.draw.polygon(screen, LIGHT_BLUE, hangar_points)
         pygame.draw.polygon(screen, WHITE, hangar_points, width=2)
 
         cards_taken = self.rules.get_player_round_penalty_count(self.human_player)
-        penalty_text = font.render(str(cards_taken), True, WHITE)
-        screen.blit(penalty_text, (hangar_x + 22, top_y + 30))
+        self._draw_outlined_text(
+            screen,
+            str(cards_taken),
+            font,
+            (hangar_x + 22, top_y + 30),
+            WHITE,
+            AIR_FORCE_BLUE,
+        )
 
         # 3. Player order display (below round/hangar)
         order_y = top_y + 35
-        order_label = mini_font.render("순서:", True, AIR_FORCE_BLUE)
-        screen.blit(order_label, (20, order_y))
+        self._draw_outlined_text(
+            screen, "순서:", mini_font, (20, order_y), WHITE, (10, 30, 50)
+        )
 
         order_x = 55
         for i, player in enumerate(self.rules.player_order):
@@ -340,14 +411,24 @@ class GameScene(Scene):
                     border_radius=3,
                 )
 
-            order_text = mini_font.render(
-                name, True, color if not is_current else WHITE
+            self._draw_outlined_text(
+                screen,
+                name,
+                mini_font,
+                (order_x, order_y),
+                WHITE if is_current else color,
+                (10, 30, 50),
             )
-            screen.blit(order_text, (order_x, order_y))
 
             if i < len(self.rules.player_order) - 1:
-                arrow = mini_font.render("→", True, AIR_FORCE_BLUE)
-                screen.blit(arrow, (order_x + 14, order_y))
+                self._draw_outlined_text(
+                    screen,
+                    "→",
+                    mini_font,
+                    (order_x + 14, order_y),
+                    LIGHT_BLUE,
+                    (10, 30, 50),
+                )
             order_x += 28
 
         # 4. Danger gauge (center-right)
@@ -366,10 +447,14 @@ class GameScene(Scene):
         warning_text = small_font.render("!", True, WHITE)
         screen.blit(warning_text, (gauge_x - 3, top_y + 8))
 
-        danger_text = font.render(
-            f"{committed}/{GAME_OVER_SCORE}", True, AIR_FORCE_BLUE
+        self._draw_outlined_text(
+            screen,
+            f"{committed}/{GAME_OVER_SCORE}",
+            font,
+            (gauge_x + 20, top_y + 5),
+            WHITE,
+            (10, 30, 50),
         )
-        screen.blit(danger_text, (gauge_x + 20, top_y + 5))
 
         bar_x = gauge_x + 80
         bar_width = 100
@@ -398,9 +483,9 @@ class GameScene(Scene):
             border_radius=3,
         )
 
-        # === AI PLAYERS (Right sidebar, top) ===
+        # === AI PLAYERS (Right sidebar, below top bar) ===
         for i, player in enumerate(self.players[1:]):
-            ai_rect = pygame.Rect(SCREEN_WIDTH - 100, 60 + i * 60, 85, 55)
+            ai_rect = pygame.Rect(SCREEN_WIDTH - 100, 90 + i * 60, 85, 55)
             bg_color = DANGER_DANGER if player.is_eliminated else LIGHT_BLUE
             pygame.draw.rect(screen, bg_color, ai_rect, border_radius=6)
             pygame.draw.rect(screen, AIR_FORCE_BLUE, ai_rect, width=2, border_radius=6)
@@ -417,19 +502,45 @@ class GameScene(Scene):
             ai_cards_text = mini_font.render(f"벌칙: {ai_cards}장", True, WHITE)
             screen.blit(ai_cards_text, (ai_rect.x + 5, ai_rect.y + 38))
 
-        # Turn log (bottom left)
+        # Turn log (bottom right with container)
         if self.turn_log:
-            log_y = SCREEN_HEIGHT - 150
-            log_title = small_font.render("이번 턴:", True, AIR_FORCE_BLUE)
-            screen.blit(log_title, (20, log_y))
+            log_x = SCREEN_WIDTH - 180
+            log_y = SCREEN_HEIGHT - 120
+            log_width = 170
+            log_height = 20 + min(len(self.turn_log), 4) * 18
+
+            # Container background
+            log_container = pygame.Surface((log_width, log_height), pygame.SRCALPHA)
+            log_container.fill((30, 60, 90, 180))
+            screen.blit(log_container, (log_x, log_y))
+            pygame.draw.rect(
+                screen,
+                AIR_FORCE_BLUE,
+                (log_x, log_y, log_width, log_height),
+                width=2,
+                border_radius=4,
+            )
+
+            # Title
+            self._draw_outlined_text(
+                screen,
+                "이번 턴:",
+                small_font,
+                (log_x + 8, log_y + 4),
+                WHITE,
+                AIR_FORCE_BLUE,
+            )
 
             for i, result in enumerate(self.turn_log[-4:]):  # Show last 4
-                log_entry = mini_font.render(
-                    f"{result.placement_order}. {result.player.name[:4]} → #{result.card.number}",
-                    True,
-                    AIR_FORCE_BLUE,
+                entry_text = f"{result.placement_order}. {result.player.name[:4]} → #{result.card.number}"
+                self._draw_outlined_text(
+                    screen,
+                    entry_text,
+                    mini_font,
+                    (log_x + 10, log_y + 22 + i * 18),
+                    WHITE,
+                    (20, 40, 60),
                 )
-                screen.blit(log_entry, (25, log_y + 20 + i * 16))
 
         # Game message
         if self.message and self.message_timer > 0:
@@ -825,15 +936,16 @@ class GameScene(Scene):
 
         # Color changes as time runs out
         if seconds > 15:
-            color = AIR_FORCE_BLUE
+            color = WHITE  # Changed from AIR_FORCE_BLUE for better visibility
         elif seconds > 5:
             color = DANGER_WARNING
         else:
             color = DANGER_DANGER
 
-        timer_text = timer_font.render(f"{seconds}s", True, color)
-        # Position after hangar icon (left side)
-        screen.blit(timer_text, (230, 20))
+        # Use outlined text for better readability
+        self._draw_outlined_text(
+            screen, f"{seconds}s", timer_font, (230, 20), color, (10, 30, 50)
+        )
 
     def _draw_dealing_animation(self, screen: pygame.Surface) -> None:
         """Draw cards flying from barracks to hand positions"""

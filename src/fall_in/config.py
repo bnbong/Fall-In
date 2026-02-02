@@ -93,11 +93,11 @@ SOLDIER_BOUNCE_HEIGHT = 5  # 병사 바운스 높이
 # =============================================================================
 # Isometric Settings - Adjusted to fit background sandy area
 # =============================================================================
-ISO_TILE_WIDTH = 135  # Larger tiles to fill sandy area
-ISO_TILE_HEIGHT = 68  # Visual height (2:1 ratio for diamond shape)
-ROW_SPACING = 12  # Spacing between rows (applied diagonally)
+ISO_TILE_WIDTH = 135
+ISO_TILE_HEIGHT = 58
 BOARD_OFFSET_X = SCREEN_WIDTH // 2 + 50  # Center on sandy area
-BOARD_OFFSET_Y = 230  # Match sandy area vertical center
+BOARD_OFFSET_Y = 260
+ROW_SPACING = 9
 
 
 # =============================================================================
