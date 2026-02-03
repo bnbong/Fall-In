@@ -113,7 +113,7 @@ class GameScene(Scene):
         self.message_timer = 0.0
 
         # Commander (left side)
-        self.commander = Commander(x=80, y=380)
+        self.commander = Commander()
 
         # Load images
         loader = AssetLoader()
@@ -897,10 +897,12 @@ class GameScene(Scene):
         # Draw background first
         screen.blit(self.background_image, (0, 0))
 
-        # Draw commander (on top of background)
+        # Draw board first (background layer)
+        self._draw_board(screen)
+
+        # Draw commander on top of board (speech bubble visible)
         self.commander.render(screen)
 
-        self._draw_board(screen)
         self._draw_ui(screen)
         self._draw_hand(screen)
 
