@@ -16,6 +16,7 @@ from fall_in.core.rules import GameRules, TurnResult
 from fall_in.ai.ai_player import create_ai_players
 from fall_in.entities.soldier_figure import SoldierFigure
 from fall_in.entities.commander import Commander
+from fall_in.entities.battalion_card import BattalionCard
 from fall_in.config import (
     SCREEN_WIDTH,
     SCREEN_HEIGHT,
@@ -36,6 +37,28 @@ from fall_in.config import (
     BOARD_OFFSET_Y,
     GAME_OVER_SCORE,
     Difficulty,
+    # Hand layout settings
+    HAND_FAN_SPREAD,
+    HAND_CARD_OVERLAP,
+    HAND_Y_OFFSET,
+    HAND_HOVER_POP_DISTANCE,
+    HAND_HOVER_SCALE,
+    # Game Board Settings
+    ROW_OFFSETS,
+    BARRACKS_X,
+    BARRACKS_Y,
+    # UI Settings
+    UI_TOP_BAR_Y,
+    UI_TOP_BAR_HEIGHT,
+    UI_ELEMENT_PLAYER_ORDER_X,
+    UI_ELEMENT_DANGER_GAUGE_WIDTH,
+    UI_ELEMENT_DANGER_GAUGE_HEIGHT,
+    ICON_HANGER_X,
+    TURN_LOG_X,
+    TURN_LOG_Y,
+    TURN_LOG_WIDTH,
+    DEALING_CARD_COLOR,
+    DEALING_CARD_BORDER_COLOR,
 )
 
 # Turn timer constant
@@ -62,6 +85,8 @@ class GameScene(Scene):
     Main game scene with isometric 4x6 board.
     Integrated with game rules for actual gameplay.
     """
+
+    ROW_OFFSETS = ROW_OFFSETS
 
     def __init__(
         self, difficulty: str = Difficulty.NORMAL, rules: Optional[GameRules] = None
@@ -120,7 +145,7 @@ class GameScene(Scene):
         self.background_image = loader.load_image(
             "ui/backgrounds/ingame_background.png"
         )
-        self.background_image = pygame.transform.scale(
+        self.background_image = pygame.transform.smoothscale(
             self.background_image, (SCREEN_WIDTH, SCREEN_HEIGHT)
         )
 
@@ -144,9 +169,9 @@ class GameScene(Scene):
         self.dealing_cards.clear()
         self.dealt_card_count = 0
 
-        # Barracks position (source) - hangar/barracks entrance in background
-        barracks_x = SCREEN_WIDTH - 150  # Right side hangar entrance
-        barracks_y = 200  # Lower to match building entrance
+        # Barracks position (source)
+        barracks_x = BARRACKS_X
+        barracks_y = BARRACKS_Y
 
         # Hand positions (targets)
         hand = self.human_player.hand
@@ -193,13 +218,6 @@ class GameScene(Scene):
             self.phase = GamePhase.SELECTING
             self.turn_timer = TURN_TIMEOUT_SECONDS
             self.dealing_cards.clear()
-
-    ROW_OFFSETS = [
-        (0, 0),  # Row 0 - base position
-        (23, 0),  # Row 1 - slight right shift
-        (46, 0),  # Row 2 - more right shift
-        (69, 0),  # Row 3 - most right shift
-    ]
 
     def _cart_to_iso(self, x: int, y: int) -> tuple[int, int]:
         """Convert cartesian coordinates to isometric.
@@ -332,7 +350,7 @@ class GameScene(Scene):
         mini_font = get_font(12)
 
         # === TOP BAR BACKGROUND ===
-        top_bar_height = 70
+        top_bar_height = UI_TOP_BAR_HEIGHT
         top_bar_surface = pygame.Surface(
             (SCREEN_WIDTH, top_bar_height), pygame.SRCALPHA
         )
@@ -348,7 +366,7 @@ class GameScene(Scene):
         )
 
         # === TOP BAR (Left to Right) ===
-        top_y = 15
+        top_y = UI_TOP_BAR_Y
 
         # 1. Round indicator (left) - with outline for visibility
         self._draw_outlined_text(
@@ -361,7 +379,7 @@ class GameScene(Scene):
         )
 
         # 2. Hangar icon + penalty cards count (next to round)
-        hangar_x = 150
+        hangar_x = ICON_HANGER_X
         hangar_points = [
             (hangar_x, top_y + 25),
             (hangar_x + 15, top_y + 5),
@@ -387,7 +405,7 @@ class GameScene(Scene):
             screen, "순서:", mini_font, (20, order_y), WHITE, (10, 30, 50)
         )
 
-        order_x = 55
+        order_x = UI_ELEMENT_PLAYER_ORDER_X
         for i, player in enumerate(self.rules.player_order):
             if player == self.human_player:
                 name = "나"
@@ -457,8 +475,8 @@ class GameScene(Scene):
         )
 
         bar_x = gauge_x + 80
-        bar_width = 100
-        bar_height = 16
+        bar_width = UI_ELEMENT_DANGER_GAUGE_WIDTH
+        bar_height = UI_ELEMENT_DANGER_GAUGE_HEIGHT
         fill_ratio = min(committed / GAME_OVER_SCORE, 1.0)
 
         pygame.draw.rect(
@@ -504,9 +522,9 @@ class GameScene(Scene):
 
         # Turn log (bottom right with container)
         if self.turn_log:
-            log_x = SCREEN_WIDTH - 180
-            log_y = SCREEN_HEIGHT - 120
-            log_width = 170
+            log_x = TURN_LOG_X
+            log_y = TURN_LOG_Y
+            log_width = TURN_LOG_WIDTH
             log_height = 20 + min(len(self.turn_log), 4) * 18
 
             # Container background
@@ -561,18 +579,10 @@ class GameScene(Scene):
 
     def _get_commander_message(self) -> str:
         """Get commander message based on player's danger score"""
-        committed = self.rules.get_player_committed_score(self.human_player)
+        # committed = self.rules.get_player_committed_score(self.human_player)
 
-        if committed < 20:
-            return "순조롭군!"
-        elif committed < 35:
-            return "조심해라..."
-        elif committed < 50:
-            return "정신차려!"
-        elif committed < 60:
-            return "집무실로 와!"
-        else:
-            return "진급 포기냐?"
+        # TODO: Add commander messages
+        return ""
 
     def _get_phase_text(self) -> str:
         """Get current phase description"""
@@ -590,7 +600,7 @@ class GameScene(Scene):
         return phase_texts.get(self.phase, "")
 
     def _draw_hand(self, screen: pygame.Surface) -> None:
-        """Draw player's hand cards at the bottom"""
+        """Draw player's hand cards in a fan layout at the bottom"""
         hand = self.human_player.hand
         if not hand:
             return
@@ -602,18 +612,44 @@ class GameScene(Scene):
                 if tween.is_complete:
                     arrived_cards.add(card)
 
-        card_width = 70
-        card_height = 100
-        spacing = 8
-        total_width = len(hand) * (card_width + spacing) - spacing
+        card_width = BattalionCard.CARD_WIDTH
+        card_height = BattalionCard.CARD_HEIGHT
+
+        # Fan layout parameters (from config)
+        num_cards = len(hand)
+        fan_spread = HAND_FAN_SPREAD
+        card_overlap = HAND_CARD_OVERLAP
+
+        # Calculate total width with overlap
+        total_width = card_width + (num_cards - 1) * (card_width - card_overlap)
         start_x = SCREEN_WIDTH // 2 - total_width // 2
-        y = SCREEN_HEIGHT - card_height - 25
+        base_y = SCREEN_HEIGHT - card_height + HAND_Y_OFFSET
 
-        font = get_font(16)
-        small_font = get_font(12)
+        # First pass: determine which card is hovered (for z-order)
+        mouse_pos = pygame.mouse.get_pos()
+        hovered_index = None
 
-        for i, card in enumerate(hand):
-            x = start_x + i * (card_width + spacing)
+        # Check from right to left (rightmost cards are on top visually)
+        for i in range(num_cards - 1, -1, -1):
+            x = start_x + i * (card_width - card_overlap)
+            card_rect = pygame.Rect(
+                x,
+                base_y - HAND_HOVER_POP_DISTANCE,
+                card_width,
+                card_height + HAND_HOVER_POP_DISTANCE,
+            )
+            if card_rect.collidepoint(mouse_pos):
+                hovered_index = i
+                break
+
+        # Draw cards in order (hovered card last for z-order)
+        draw_order = list(range(num_cards))
+        if hovered_index is not None:
+            draw_order.remove(hovered_index)
+            draw_order.append(hovered_index)
+
+        for i in draw_order:
+            card = hand[i]
 
             # During dealing, skip cards that haven't arrived yet
             if self.phase == GamePhase.DEALING and card not in arrived_cards:
@@ -622,48 +658,42 @@ class GameScene(Scene):
             if self.dragging and i == self.selected_card_index:
                 continue
 
-            mouse_pos = pygame.mouse.get_pos()
-            card_rect = pygame.Rect(x, y, card_width, card_height)
-            is_hovered = card_rect.collidepoint(mouse_pos)
+            # Calculate position with overlap
+            x = start_x + i * (card_width - card_overlap)
+
+            # Calculate rotation for fan effect
+            center_index = (num_cards - 1) / 2
+            offset_from_center = i - center_index
+            rotation = (
+                (offset_from_center / max(1, num_cards - 1)) * fan_spread
+                if num_cards > 1
+                else 0
+            )
+
+            is_hovered = i == hovered_index
             is_selected = i == self.selected_card_index
 
-            draw_y = y - 20 if (is_hovered or is_selected) else y
-
-            # Card background
-            bg_color = (220, 220, 220) if is_selected else (200, 200, 200)
-            pygame.draw.rect(
-                screen, bg_color, (x, draw_y, card_width, card_height), border_radius=8
-            )
-            border_width = 3 if is_selected else 2
-            pygame.draw.rect(
-                screen,
-                AIR_FORCE_BLUE,
-                (x, draw_y, card_width, card_height),
-                width=border_width,
-                border_radius=8,
-            )
-
-            # Card number
-            num_text = font.render(f"#{card.number}", True, AIR_FORCE_BLUE)
-            screen.blit(num_text, (x + 8, draw_y + 8))
-
-            # Danger indicator
-            if card.danger <= 2:
-                danger_color = DANGER_SAFE
-            elif card.danger <= 4:
-                danger_color = DANGER_WARNING
+            # Hover effect: pop up and scale (from config)
+            if is_hovered or is_selected:
+                draw_y = base_y - HAND_HOVER_POP_DISTANCE
+                scale = HAND_HOVER_SCALE
+                rotation = 0  # No rotation when hovered
             else:
-                danger_color = DANGER_DANGER
+                draw_y = base_y
+                scale = 1.0
 
-            pygame.draw.circle(
-                screen, danger_color, (x + card_width - 12, draw_y + 12), 8
+            # Render using BattalionCard entity with rotation and scale
+            BattalionCard.render(
+                screen,
+                card,
+                x,
+                draw_y,
+                is_interviewed=card.is_collected,
+                is_selected=is_selected,
+                is_hovered=is_hovered,
+                rotation=rotation,
+                scale=scale,
             )
-            danger_text = small_font.render(str(card.danger), True, WHITE)
-            screen.blit(danger_text, (x + card_width - 16, draw_y + 7))
-
-            # Soldier placeholder
-            soldier_rect = pygame.Rect(x + 8, draw_y + 35, card_width - 16, 45)
-            pygame.draw.rect(screen, LIGHT_BLUE, soldier_rect, border_radius=4)
 
     def handle_event(self, event: pygame.event.Event) -> None:
         """Handle pygame events"""
@@ -690,21 +720,30 @@ class GameScene(Scene):
                     self.dragging = False
 
     def _handle_card_click(self, pos: tuple[int, int]) -> None:
-        """Handle clicking on a card in hand"""
+        """Handle clicking on a card in hand (fan layout)"""
         hand = self.human_player.hand
         if not hand:
             return
 
-        card_width = 70
-        card_height = 100
-        spacing = 8
-        total_width = len(hand) * (card_width + spacing) - spacing
-        start_x = SCREEN_WIDTH // 2 - total_width // 2
-        y = SCREEN_HEIGHT - card_height - 25
+        # Use same layout parameters as _draw_hand (from config)
+        card_width = BattalionCard.CARD_WIDTH
+        card_height = BattalionCard.CARD_HEIGHT
+        num_cards = len(hand)
+        card_overlap = HAND_CARD_OVERLAP
 
-        for i in range(len(hand)):
-            x = start_x + i * (card_width + spacing)
-            card_rect = pygame.Rect(x, y - 20, card_width, card_height + 20)
+        total_width = card_width + (num_cards - 1) * (card_width - card_overlap)
+        start_x = SCREEN_WIDTH // 2 - total_width // 2
+        base_y = SCREEN_HEIGHT - card_height + HAND_Y_OFFSET
+
+        # Check from right to left (rightmost cards are visually on top)
+        for i in range(num_cards - 1, -1, -1):
+            x = start_x + i * (card_width - card_overlap)
+            card_rect = pygame.Rect(
+                x,
+                base_y - HAND_HOVER_POP_DISTANCE,
+                card_width,
+                card_height + HAND_HOVER_POP_DISTANCE,
+            )
 
             if card_rect.collidepoint(pos):
                 if self.selected_card_index == i:
@@ -970,10 +1009,10 @@ class GameScene(Scene):
                 card_height,
             )
 
-            # Card back (blue color during dealing)
-            pygame.draw.rect(screen, LIGHT_BLUE, card_rect, border_radius=5)
+            # Card back
+            pygame.draw.rect(screen, DEALING_CARD_COLOR, card_rect, border_radius=5)
             pygame.draw.rect(
-                screen, AIR_FORCE_BLUE, card_rect, width=2, border_radius=5
+                screen, DEALING_CARD_BORDER_COLOR, card_rect, width=2, border_radius=5
             )
 
             # Card number

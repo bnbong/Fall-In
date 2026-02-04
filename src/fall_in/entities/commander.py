@@ -8,6 +8,12 @@ import pygame
 
 from fall_in.ui.speech_bubble import SpeechBubble
 from fall_in.utils.asset_loader import AssetLoader
+from fall_in.config import (
+    COMMANDER_X,
+    COMMANDER_Y,
+    COMMANDER_WIDTH,
+    COMMANDER_HEIGHT,
+)
 
 
 class CommanderExpression:
@@ -28,9 +34,9 @@ class Commander:
     - Sprite sheet rendering (4 quadrants for expressions)
     """
 
-    # Position (left side of screen, partially off-screen to show thighs and above)
-    DEFAULT_X = 100  # Centered horizontally at left
-    DEFAULT_Y = 520  # Pushed down so lower body is cut off
+    # Position (from config)
+    DEFAULT_X = COMMANDER_X
+    DEFAULT_Y = COMMANDER_Y
 
     # Sprite sheet layout (2x2 grid)
     # Q1 (top-right) = ANGRY
@@ -49,10 +55,9 @@ class Commander:
         CommanderExpression.FURIOUS: (1, 1),  # Q4 - bottom-right
     }
 
-    # Display size (larger, maintaining aspect ratio)
-    # Original frame: 640x1648, ratio ~1:2.575
-    DISPLAY_WIDTH = 250
-    DISPLAY_HEIGHT = 680
+    # Display size (from config)
+    DISPLAY_WIDTH = COMMANDER_WIDTH
+    DISPLAY_HEIGHT = COMMANDER_HEIGHT
 
     # Danger thresholds for expression changes
     DANGER_THRESHOLDS = {
@@ -89,7 +94,7 @@ class Commander:
             )
             frame_surface = self.sprite_sheet.subsurface(frame_rect).copy()
             # Scale to display size
-            scaled = pygame.transform.scale(
+            scaled = pygame.transform.smoothscale(
                 frame_surface, (self.DISPLAY_WIDTH, self.DISPLAY_HEIGHT)
             )
             self.expression_surfaces[expr] = scaled
