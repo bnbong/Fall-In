@@ -10,6 +10,7 @@ import pygame
 
 from fall_in.core.card import Card
 from fall_in.utils.asset_loader import AssetLoader, get_font
+from fall_in.utils.danger_utils import get_danger_circle_color
 from fall_in.config import (
     WHITE,
     BATTALION_CARD_WIDTH,
@@ -124,52 +125,42 @@ class BattalionCard:
         cls._initialized = True
 
     @classmethod
+    def _get_danger_key(cls, danger: int) -> int:
+        """Map danger level to available portrait key"""
+        if danger in cls.PORTRAIT_FILES:
+            return danger
+        # Fall back to closest available
+        if danger <= 1:
+            return 1
+        elif danger <= 2:
+            return 2
+        elif danger <= 3:
+            return 3
+        elif danger <= 5:
+            return 5
+        else:
+            return 7
+
+    @classmethod
+    def _get_portrait_filename(cls, danger: int, card_number: int) -> str:
+        """Get portrait filename for danger level (deterministic by card number)"""
+        danger_key = cls._get_danger_key(danger)
+        files = cls.PORTRAIT_FILES[danger_key]
+        return files[card_number % len(files)]
+
+    @classmethod
     def get_portrait_for_danger(cls, danger: int, card_number: int) -> pygame.Surface:
         """Get appropriate portrait for danger level (deterministic by card number)"""
-        # Map danger to available portraits
-        danger_key = danger
-        if danger not in cls.PORTRAIT_FILES:
-            # Fall back to closest available
-            if danger <= 1:
-                danger_key = 1
-            elif danger <= 2:
-                danger_key = 2
-            elif danger <= 3:
-                danger_key = 3
-            elif danger <= 5:
-                danger_key = 5
-            else:
-                danger_key = 7
-
-        files = cls.PORTRAIT_FILES[danger_key]
-        # Use card number to deterministically select portrait variant
-        selected = files[card_number % len(files)]
-        return cls._portraits[selected]
+        filename = cls._get_portrait_filename(danger, card_number)
+        return cls._portraits[filename]
 
     @classmethod
     def _get_portrait_hr_for_danger(
         cls, danger: int, card_number: int
     ) -> pygame.Surface:
         """Get high-resolution portrait for danger level (for hover/zoom rendering)"""
-        # Map danger to available portraits (same logic as get_portrait_for_danger)
-        danger_key = danger
-        if danger not in cls.PORTRAIT_FILES:
-            # Fall back to closest available
-            if danger <= 1:
-                danger_key = 1
-            elif danger <= 2:
-                danger_key = 2
-            elif danger <= 3:
-                danger_key = 3
-            elif danger <= 5:
-                danger_key = 5
-            else:
-                danger_key = 7
-
-        files = cls.PORTRAIT_FILES[danger_key]
-        # Use card number to deterministically select portrait variant
-        selected = files[card_number % len(files)]
-        return cls._portraits_hr[selected]
+        filename = cls._get_portrait_filename(danger, card_number)
+        return cls._portraits_hr[filename]
 
     @classmethod
     def render(
@@ -348,6 +339,10 @@ class BattalionCard:
         aura_y = y - (aura_size + 20 - cls.CARD_HEIGHT) // 2
         screen.blit(aura_surface, (aura_x, aura_y))
 
+    # Constants for number circle
+    NUMBER_CIRCLE_RADIUS = 14
+    NUMBER_CIRCLE_FONT_SIZE = 12
+
     @classmethod
     def _draw_number_circle(
         cls, surface: pygame.Surface, card_number: int, danger: int
@@ -355,25 +350,15 @@ class BattalionCard:
         """Draw card number circle at top of card (colored by danger level)"""
         circle_x = int(cls.CARD_WIDTH * cls.NUMBER_CIRCLE_X)
         circle_y = int(cls.CARD_HEIGHT * cls.NUMBER_CIRCLE_Y)
-        radius = 14  # Larger for bigger card
+        radius = cls.NUMBER_CIRCLE_RADIUS
 
-        # Circle background color based on danger
-        if danger >= 7:
-            bg_color = (100, 50, 150)  # Purple
-        elif danger >= 5:
-            bg_color = (200, 50, 50)  # Red
-        elif danger >= 3:
-            bg_color = (230, 150, 50)  # Orange
-        elif danger >= 2:
-            bg_color = (200, 180, 50)  # Yellow
-        else:
-            bg_color = (100, 150, 100)  # Green
+        bg_color = get_danger_circle_color(danger)
 
         pygame.draw.circle(surface, bg_color, (circle_x, circle_y), radius)
         pygame.draw.circle(surface, WHITE, (circle_x, circle_y), radius, width=2)
 
         # Draw card number (not danger)
-        font = get_font(12, "bold")
+        font = get_font(cls.NUMBER_CIRCLE_FONT_SIZE, "bold")
         text = font.render(str(card_number), True, WHITE)
         text_rect = text.get_rect(center=(circle_x, circle_y))
         surface.blit(text, text_rect)
@@ -388,19 +373,9 @@ class BattalionCard:
         scaled_height = int(cls.CARD_HEIGHT * scale)
         circle_x = int(scaled_width * cls.NUMBER_CIRCLE_X)
         circle_y = int(scaled_height * cls.NUMBER_CIRCLE_Y)
-        radius = int(14 * scale)  # Scale the radius
+        radius = int(cls.NUMBER_CIRCLE_RADIUS * scale)
 
-        # Circle background color based on danger
-        if danger >= 7:
-            bg_color = (100, 50, 150)  # Purple
-        elif danger >= 5:
-            bg_color = (200, 50, 50)  # Red
-        elif danger >= 3:
-            bg_color = (230, 150, 50)  # Orange
-        elif danger >= 2:
-            bg_color = (200, 180, 50)  # Yellow
-        else:
-            bg_color = (100, 150, 100)  # Green
+        bg_color = get_danger_circle_color(danger)
 
         pygame.draw.circle(surface, bg_color, (circle_x, circle_y), radius)
         pygame.draw.circle(
@@ -408,7 +383,7 @@ class BattalionCard:
         )
 
         # Draw card number with scaled font
-        font_size = int(12 * scale)
+        font_size = int(cls.NUMBER_CIRCLE_FONT_SIZE * scale)
         font = get_font(font_size, "bold")
         text = font.render(str(card_number), True, WHITE)
         text_rect = text.get_rect(center=(circle_x, circle_y))

@@ -7,6 +7,7 @@ import pygame
 from fall_in.scenes.base_scene import Scene
 from fall_in.ui.button import Button
 from fall_in.utils.asset_loader import get_font
+from fall_in.utils.danger_utils import get_danger_color
 from fall_in.core.player import Player
 from fall_in.core.rules import GameRules
 from fall_in.config import (
@@ -14,10 +15,8 @@ from fall_in.config import (
     SCREEN_HEIGHT,
     AIR_FORCE_BLUE,
     DANGER_SAFE,
-    DANGER_CAUTION,
     DANGER_WARNING,
     DANGER_DANGER,
-    DANGER_CRITICAL,
     GAME_OVER_SCORE,
 )
 
@@ -94,19 +93,6 @@ class ResultScene(Scene):
             winner=self.winner, players=self.players, round_number=self.round_number
         )
         GameManager().change_scene(game_over_scene)
-
-    def _get_danger_color(self, score: int) -> tuple[int, int, int]:
-        """Get color based on danger score"""
-        if score < 20:
-            return DANGER_SAFE
-        elif score < 35:
-            return DANGER_CAUTION
-        elif score < 50:
-            return DANGER_WARNING
-        elif score < 60:
-            return DANGER_DANGER
-        else:
-            return DANGER_CRITICAL
 
     def handle_event(self, event: pygame.event.Event) -> None:
         """Handle events"""
@@ -187,7 +173,7 @@ class ResultScene(Scene):
             gauge_width = 100
             gauge_height = 20
             fill_ratio = min(total / GAME_OVER_SCORE, 1.0)
-            fill_color = self._get_danger_color(total)
+            fill_color = get_danger_color(total)
 
             pygame.draw.rect(
                 screen,

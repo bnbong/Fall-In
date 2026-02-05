@@ -94,6 +94,19 @@ CARD_ANIMATION_SPEED = 8  # 카드 이동 속도
 SOLDIER_BOUNCE_SPEED = 0.1  # 병사 바운스 속도
 SOLDIER_BOUNCE_HEIGHT = 5  # 병사 바운스 높이
 
+# Card dealing animation
+CARD_DEAL_DELAY = 0.1  # Delay between each card deal (seconds)
+CARD_DEAL_DURATION = 0.4  # Duration of card fly animation (seconds)
+
+# Phase timing
+AI_THINKING_DURATION = 0.5  # AI thinking phase duration (seconds)
+PLACEMENT_PAUSE_DURATION = 0.5  # Pause after each placement (seconds)
+PENALTY_ANIMATION_DURATION = 0.4  # Base duration for penalty card animation
+
+# Timer thresholds for color changes
+TIMER_WARNING_THRESHOLD = 15  # Seconds remaining when timer turns yellow
+TIMER_DANGER_THRESHOLD = 5  # Seconds remaining when timer turns red
+
 # =============================================================================
 # Isometric Settings - Adjusted to fit background sandy area
 # =============================================================================

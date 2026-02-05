@@ -10,6 +10,12 @@ from typing import Optional
 from fall_in.scenes.base_scene import Scene
 from fall_in.utils.asset_loader import get_font, AssetLoader
 from fall_in.utils.tween import Tween, TweenGroup
+from fall_in.utils.danger_utils import (
+    TileType,
+    get_danger_color,
+    get_tile_type_by_danger,
+)
+from fall_in.utils.text_utils import draw_outlined_text
 from fall_in.core.card import Card
 from fall_in.core.player import create_players
 from fall_in.core.rules import GameRules, TurnResult
@@ -24,10 +30,8 @@ from fall_in.config import (
     WHITE,
     LIGHT_BLUE,
     DANGER_SAFE,
-    DANGER_CAUTION,
     DANGER_WARNING,
     DANGER_DANGER,
-    DANGER_CRITICAL,
     NUM_ROWS,
     MAX_CARDS_PER_ROW,
     ISO_TILE_WIDTH,
@@ -152,15 +156,15 @@ class GameScene(Scene):
         # Load tile images (entity folder)
         # tile_1: empty slot (beige), tile_2: safe (yellow), tile_3: warning (red), tile_4: danger (purple)
         self.tile_images = {
-            "empty": loader.load_image("entity/tile_1.png"),
-            "safe": loader.load_image("entity/tile_2.png"),
-            "warning": loader.load_image("entity/tile_3.png"),
-            "danger": loader.load_image("entity/tile_4.png"),
+            TileType.EMPTY.value: loader.load_image("entity/tile_1.png"),
+            TileType.SAFE.value: loader.load_image("entity/tile_2.png"),
+            TileType.WARNING.value: loader.load_image("entity/tile_3.png"),
+            TileType.DANGER.value: loader.load_image("entity/tile_4.png"),
         }
         # Scale tiles to match isometric tile size
         for key in self.tile_images:
             self.tile_images[key] = pygame.transform.smoothscale(
-                self.tile_images[key], (ISO_TILE_WIDTH, ISO_TILE_HEIGHT)
+                self.tile_images[key], (int(ISO_TILE_WIDTH), int(ISO_TILE_HEIGHT))
             )
 
         # Start round
@@ -260,31 +264,20 @@ class GameScene(Scene):
         )
         return iso_x, iso_y
 
-    def _get_danger_color(self, score: int) -> tuple[int, int, int]:
-        """Get color based on danger score"""
-        if score < 20:
-            return DANGER_SAFE
-        elif score < 35:
-            return DANGER_CAUTION
-        elif score < 50:
-            return DANGER_WARNING
-        elif score < 60:
-            return DANGER_DANGER
-        else:
-            return DANGER_CRITICAL
-
     def _draw_isometric_tile(
         self,
         screen: pygame.Surface,
         x: int,
         y: int,
-        tile_type: str = "empty",
+        tile_type: TileType = TileType.EMPTY,
     ) -> None:
         """Draw a single isometric tile using tile images"""
         iso_x, iso_y = self._cart_to_iso(x, y)
 
         # Get tile image (default to empty if type not found)
-        tile_image = self.tile_images.get(tile_type, self.tile_images["empty"])
+        tile_image = self.tile_images.get(
+            tile_type.value, self.tile_images[TileType.EMPTY.value]
+        )
 
         # Position tile centered on iso_x, iso_y
         tile_rect = tile_image.get_rect(center=(iso_x, iso_y))
@@ -303,16 +296,9 @@ class GameScene(Scene):
 
                 if col < len(row):
                     card = row[col]
-                    danger = card.danger
-                    # Select tile type based on danger level
-                    if danger <= 2:
-                        tile_type = "safe"  # Yellow tile
-                    elif danger <= 4:
-                        tile_type = "warning"  # Red tile
-                    else:
-                        tile_type = "danger"  # Purple tile
+                    tile_type = get_tile_type_by_danger(card.danger)
                 else:
-                    tile_type = "empty"  # Beige empty slot
+                    tile_type = TileType.EMPTY
 
                 # Calculate depth for z-ordering (higher iso_y = more in front)
                 iso_x, iso_y = self._cart_to_iso(visual_col, row_idx)
@@ -347,25 +333,6 @@ class GameScene(Scene):
             figure = SoldierFigure(card)
             figure.render(screen, iso_x, iso_y, ISO_TILE_HEIGHT)
 
-    def _draw_outlined_text(
-        self,
-        screen: pygame.Surface,
-        text: str,
-        font: pygame.font.Font,
-        pos: tuple[int, int],
-        color: tuple[int, int, int],
-        outline_color: tuple[int, int, int] = WHITE,
-    ) -> None:
-        """Draw text with outline for better readability"""
-        x, y = pos
-        # Draw outline (white shadow in 4 directions)
-        outline_surface = font.render(text, True, outline_color)
-        for dx, dy in [(-1, -1), (-1, 1), (1, -1), (1, 1)]:
-            screen.blit(outline_surface, (x + dx, y + dy))
-        # Draw main text on top
-        text_surface = font.render(text, True, color)
-        screen.blit(text_surface, pos)
-
     def _draw_ui(self, screen: pygame.Surface) -> None:
         """Draw UI elements with new layout"""
         title_font = get_font(24, "bold")
@@ -393,7 +360,7 @@ class GameScene(Scene):
         top_y = UI_TOP_BAR_Y
 
         # 1. Round indicator (left) - with outline for visibility
-        self._draw_outlined_text(
+        draw_outlined_text(
             screen,
             f"ROUND {self.rules.round_state.round_number}",
             title_font,
@@ -414,7 +381,7 @@ class GameScene(Scene):
         pygame.draw.polygon(screen, WHITE, hangar_points, width=2)
 
         cards_taken = self.rules.get_player_round_penalty_count(self.human_player)
-        self._draw_outlined_text(
+        draw_outlined_text(
             screen,
             str(cards_taken),
             font,
@@ -425,7 +392,7 @@ class GameScene(Scene):
 
         # 3. Player order display (below round/hangar)
         order_y = top_y + 35
-        self._draw_outlined_text(
+        draw_outlined_text(
             screen, "순서:", mini_font, (20, order_y), WHITE, (10, 30, 50)
         )
 
@@ -453,7 +420,7 @@ class GameScene(Scene):
                     border_radius=3,
                 )
 
-            self._draw_outlined_text(
+            draw_outlined_text(
                 screen,
                 name,
                 mini_font,
@@ -463,7 +430,7 @@ class GameScene(Scene):
             )
 
             if i < len(self.rules.player_order) - 1:
-                self._draw_outlined_text(
+                draw_outlined_text(
                     screen,
                     "→",
                     mini_font,
@@ -489,7 +456,7 @@ class GameScene(Scene):
         warning_text = small_font.render("!", True, WHITE)
         screen.blit(warning_text, (gauge_x - 3, top_y + 8))
 
-        self._draw_outlined_text(
+        draw_outlined_text(
             screen,
             f"{committed}/{GAME_OVER_SCORE}",
             font,
@@ -510,7 +477,7 @@ class GameScene(Scene):
             border_radius=3,
         )
         if fill_ratio > 0:
-            fill_color = self._get_danger_color(committed)
+            fill_color = get_danger_color(committed)
             pygame.draw.rect(
                 screen,
                 fill_color,
@@ -564,7 +531,7 @@ class GameScene(Scene):
             )
 
             # Title
-            self._draw_outlined_text(
+            draw_outlined_text(
                 screen,
                 "이번 턴:",
                 small_font,
@@ -575,7 +542,7 @@ class GameScene(Scene):
 
             for i, result in enumerate(self.turn_log[-4:]):  # Show last 4
                 entry_text = f"{result.placement_order}. {result.player.name[:4]} → #{result.card.number}"
-                self._draw_outlined_text(
+                draw_outlined_text(
                     screen,
                     entry_text,
                     mini_font,
@@ -1014,7 +981,7 @@ class GameScene(Scene):
             color = DANGER_DANGER
 
         # Use outlined text for better readability
-        self._draw_outlined_text(
+        draw_outlined_text(
             screen, f"{seconds}s", timer_font, (230, 20), color, (10, 30, 50)
         )
 
