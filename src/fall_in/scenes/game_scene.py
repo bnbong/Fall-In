@@ -149,6 +149,20 @@ class GameScene(Scene):
             self.background_image, (SCREEN_WIDTH, SCREEN_HEIGHT)
         )
 
+        # Load tile images (entity folder)
+        # tile_1: empty slot (beige), tile_2: safe (yellow), tile_3: warning (red), tile_4: danger (purple)
+        self.tile_images = {
+            "empty": loader.load_image("entity/tile_1.png"),
+            "safe": loader.load_image("entity/tile_2.png"),
+            "warning": loader.load_image("entity/tile_3.png"),
+            "danger": loader.load_image("entity/tile_4.png"),
+        }
+        # Scale tiles to match isometric tile size
+        for key in self.tile_images:
+            self.tile_images[key] = pygame.transform.smoothscale(
+                self.tile_images[key], (ISO_TILE_WIDTH, ISO_TILE_HEIGHT)
+            )
+
         # Start round
         self._start_new_round()
 
@@ -159,6 +173,10 @@ class GameScene(Scene):
         self.placement_queue.clear()
         self.message = f"라운드 {self.rules.round_state.round_number} 시작!"
         self.message_timer = 2.0
+
+        # Set commander expression before dealing (so it's ready when cards start dealing)
+        committed = self.rules.get_player_committed_score(self.human_player)
+        self.commander.set_expression_from_danger(committed)
 
         # Start dealing animation
         self._start_dealing_animation()
@@ -260,28 +278,24 @@ class GameScene(Scene):
         screen: pygame.Surface,
         x: int,
         y: int,
-        color: tuple,
-        border_color: tuple = AIR_FORCE_BLUE,
+        tile_type: str = "empty",
     ) -> None:
-        """Draw a single isometric tile (empty slot)"""
+        """Draw a single isometric tile using tile images"""
         iso_x, iso_y = self._cart_to_iso(x, y)
 
-        # Diamond points
-        points = [
-            (iso_x, iso_y - ISO_TILE_HEIGHT // 2),
-            (iso_x + ISO_TILE_WIDTH // 2, iso_y),
-            (iso_x, iso_y + ISO_TILE_HEIGHT // 2),
-            (iso_x - ISO_TILE_WIDTH // 2, iso_y),
-        ]
+        # Get tile image (default to empty if type not found)
+        tile_image = self.tile_images.get(tile_type, self.tile_images["empty"])
 
-        pygame.draw.polygon(screen, color, points)
-        pygame.draw.polygon(screen, border_color, points, width=2)
+        # Position tile centered on iso_x, iso_y
+        tile_rect = tile_image.get_rect(center=(iso_x, iso_y))
+        screen.blit(tile_image, tile_rect)
 
     def _draw_board(self, screen: pygame.Surface) -> None:
         """Draw the isometric game board with soldier figures"""
         board = self.rules.board
 
-        # First pass: draw all tiles (back to front for z-order)
+        # First pass: collect all tiles with depth for proper z-ordering
+        tiles_to_draw = []
         for row_idx in range(NUM_ROWS):
             for col in range(MAX_CARDS_PER_ROW + 1):
                 visual_col = MAX_CARDS_PER_ROW - col
@@ -290,17 +304,27 @@ class GameScene(Scene):
                 if col < len(row):
                     card = row[col]
                     danger = card.danger
+                    # Select tile type based on danger level
                     if danger <= 2:
-                        color = DANGER_SAFE
+                        tile_type = "safe"  # Yellow tile
                     elif danger <= 4:
-                        color = DANGER_WARNING
+                        tile_type = "warning"  # Red tile
                     else:
-                        color = DANGER_DANGER
-                    color = tuple(min(255, c + 60) for c in color)
+                        tile_type = "danger"  # Purple tile
                 else:
-                    color = (235, 225, 210)
+                    tile_type = "empty"  # Beige empty slot
 
-                self._draw_isometric_tile(screen, visual_col, row_idx, color)
+                # Calculate depth for z-ordering (higher iso_y = more in front)
+                iso_x, iso_y = self._cart_to_iso(visual_col, row_idx)
+                depth = iso_y
+                tiles_to_draw.append((depth, visual_col, row_idx, tile_type))
+
+        # Sort tiles by depth (draw smaller iso_y first = back, larger iso_y last = front)
+        tiles_to_draw.sort(key=lambda t: t[0])
+
+        # Draw tiles in sorted order (back to front)
+        for depth, visual_col, row_idx, tile_type in tiles_to_draw:
+            self._draw_isometric_tile(screen, visual_col, row_idx, tile_type)
 
         # Second pass: draw soldier figures
         # Sort by isometric depth: draw back (low row + high visual_col) first
@@ -759,6 +783,10 @@ class GameScene(Scene):
 
         card = self.human_player.hand[self.selected_card_index]
         self.human_player.select_card(card)
+
+        # Reset selected card index to prevent adjacent card from being highlighted
+        self.selected_card_index = None
+
         self.phase = GamePhase.AI_THINKING
         self.phase_timer = 0.5
         self.message = "AI가 카드를 선택 중..."
@@ -897,6 +925,8 @@ class GameScene(Scene):
         # Update dealing animation
         if self.phase == GamePhase.DEALING:
             self._update_dealing_animation(dt)
+            # Also update commander during dealing phase
+            self.commander.update(dt)
             return
 
         # Update turn timer during selection phase

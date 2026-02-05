@@ -1,8 +1,9 @@
 """
 BattalionCard - Renders soldier card with portrait, danger info, and aura effects
+
+# TODO: add card aura effect assets or improve the current aura effect
 """
 
-import random
 from typing import Optional
 
 import pygame
@@ -144,6 +145,31 @@ class BattalionCard:
         # Use card number to deterministically select portrait variant
         selected = files[card_number % len(files)]
         return cls._portraits[selected]
+
+    @classmethod
+    def _get_portrait_hr_for_danger(
+        cls, danger: int, card_number: int
+    ) -> pygame.Surface:
+        """Get high-resolution portrait for danger level (for hover/zoom rendering)"""
+        # Map danger to available portraits (same logic as get_portrait_for_danger)
+        danger_key = danger
+        if danger not in cls.PORTRAIT_FILES:
+            # Fall back to closest available
+            if danger <= 1:
+                danger_key = 1
+            elif danger <= 2:
+                danger_key = 2
+            elif danger <= 3:
+                danger_key = 3
+            elif danger <= 5:
+                danger_key = 5
+            else:
+                danger_key = 7
+
+        files = cls.PORTRAIT_FILES[danger_key]
+        # Use card number to deterministically select portrait variant
+        selected = files[card_number % len(files)]
+        return cls._portraits_hr[selected]
 
     @classmethod
     def render(
@@ -348,6 +374,42 @@ class BattalionCard:
 
         # Draw card number (not danger)
         font = get_font(12, "bold")
+        text = font.render(str(card_number), True, WHITE)
+        text_rect = text.get_rect(center=(circle_x, circle_y))
+        surface.blit(text, text_rect)
+
+    @classmethod
+    def _draw_number_circle_scaled(
+        cls, surface: pygame.Surface, card_number: int, danger: int, scale: float
+    ) -> None:
+        """Draw card number circle at top of card (scaled version for hover/zoom)"""
+        # Calculate scaled dimensions
+        scaled_width = int(cls.CARD_WIDTH * scale)
+        scaled_height = int(cls.CARD_HEIGHT * scale)
+        circle_x = int(scaled_width * cls.NUMBER_CIRCLE_X)
+        circle_y = int(scaled_height * cls.NUMBER_CIRCLE_Y)
+        radius = int(14 * scale)  # Scale the radius
+
+        # Circle background color based on danger
+        if danger >= 7:
+            bg_color = (100, 50, 150)  # Purple
+        elif danger >= 5:
+            bg_color = (200, 50, 50)  # Red
+        elif danger >= 3:
+            bg_color = (230, 150, 50)  # Orange
+        elif danger >= 2:
+            bg_color = (200, 180, 50)  # Yellow
+        else:
+            bg_color = (100, 150, 100)  # Green
+
+        pygame.draw.circle(surface, bg_color, (circle_x, circle_y), radius)
+        pygame.draw.circle(
+            surface, WHITE, (circle_x, circle_y), radius, width=max(1, int(2 * scale))
+        )
+
+        # Draw card number with scaled font
+        font_size = int(12 * scale)
+        font = get_font(font_size, "bold")
         text = font.render(str(card_number), True, WHITE)
         text_rect = text.get_rect(center=(circle_x, circle_y))
         surface.blit(text, text_rect)

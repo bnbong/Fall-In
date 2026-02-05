@@ -97,10 +97,10 @@ SOLDIER_BOUNCE_HEIGHT = 5  # 병사 바운스 높이
 # =============================================================================
 # Isometric Settings - Adjusted to fit background sandy area
 # =============================================================================
-ISO_TILE_WIDTH = 135
-ISO_TILE_HEIGHT = 58
-BOARD_OFFSET_X = SCREEN_WIDTH // 2 + 50  # Center on sandy area
-BOARD_OFFSET_Y = 260
+ISO_TILE_WIDTH = 126.44
+ISO_TILE_HEIGHT = 58.77
+BOARD_OFFSET_X = SCREEN_WIDTH // 2 + 50
+BOARD_OFFSET_Y = 248
 ROW_SPACING = 9
 
 
@@ -129,8 +129,8 @@ HAND_HOVER_SCALE = 1.20  # Scale factor on hover (1.15 = 15% larger)
 BATTALION_CARD_WIDTH = 150
 BATTALION_CARD_HEIGHT = 253
 BATTALION_PORTRAIT_CENTER_X = 0.5  # Centered horizontally
-BATTALION_PORTRAIT_CENTER_Y = 0.28  # Upper portion of card
-BATTALION_PORTRAIT_RADIUS_RATIO = 0.35  # Relative to card width
+BATTALION_PORTRAIT_CENTER_Y = 0.30  # Upper portion of card
+BATTALION_PORTRAIT_RADIUS_RATIO = 0.30  # Relative to card width
 BATTALION_NUMBER_CIRCLE_X = 0.5  # Centered
 BATTALION_NUMBER_CIRCLE_Y = 0.055  # Near top
 
