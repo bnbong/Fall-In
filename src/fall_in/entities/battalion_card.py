@@ -20,6 +20,14 @@ from fall_in.config import (
     BATTALION_PORTRAIT_RADIUS_RATIO,
     BATTALION_NUMBER_CIRCLE_X,
     BATTALION_NUMBER_CIRCLE_Y,
+    BATTALION_NAME_Y,
+    BATTALION_RANK_Y,
+    BATTALION_UNIT_Y,
+    BATTALION_DANGER_Y,
+    BATTALION_TEXT_FONT_SIZE,
+    BATTALION_UNKNOWN_TEXT,
+    BATTALION_DANGER_LABELS,
+    BATTALION_DETAIL_TEXT_X,
 )
 
 
@@ -77,7 +85,12 @@ class BattalionCard:
     _card_base_hr: Optional[pygame.Surface] = None
     _portraits_hr: dict[str, pygame.Surface] = {}
 
+    # Cached individual soldier portraits
+    _soldier_portraits: dict[int, pygame.Surface] = {}
+    _soldier_portraits_hr: dict[int, pygame.Surface] = {}
+
     _initialized: bool = False
+    _loader: Optional[AssetLoader] = None  # Keep loader for lazy loading
 
     @classmethod
     def initialize(cls) -> None:
@@ -123,6 +136,39 @@ class BattalionCard:
                 cls._portraits_hr[filename] = scaled_hr
 
         cls._initialized = True
+        cls._loader = loader  # Keep for lazy loading individual portraits
+
+    @classmethod
+    def _load_soldier_portrait(cls, soldier_id: int) -> Optional[pygame.Surface]:
+        """Lazy load individual soldier portrait if available"""
+        if soldier_id in cls._soldier_portraits:
+            return cls._soldier_portraits[soldier_id]
+
+        if cls._loader is None:
+            cls._loader = AssetLoader()
+
+        path = f"characters/portraits/portrait_{soldier_id}.png"
+        try:
+            portrait = cls._loader.load_image(path)
+
+            # Normal size
+            portrait_size = int(cls.CARD_WIDTH * cls.PORTRAIT_RADIUS_RATIO * 2)
+            scaled = pygame.transform.smoothscale(
+                portrait, (portrait_size, portrait_size)
+            )
+            cls._soldier_portraits[soldier_id] = scaled
+
+            # High-res size
+            hr_width = int(cls.CARD_WIDTH * cls.HR_SCALE)
+            portrait_size_hr = int(hr_width * cls.PORTRAIT_RADIUS_RATIO * 2)
+            scaled_hr = pygame.transform.smoothscale(
+                portrait, (portrait_size_hr, portrait_size_hr)
+            )
+            cls._soldier_portraits_hr[soldier_id] = scaled_hr
+
+            return scaled
+        except Exception:
+            return None  # Portrait not found, will use mob portrait
 
     @classmethod
     def _get_danger_key(cls, danger: int) -> int:
@@ -159,8 +205,39 @@ class BattalionCard:
         cls, danger: int, card_number: int
     ) -> pygame.Surface:
         """Get high-resolution portrait for danger level (for hover/zoom rendering)"""
+        # Fall back to mob portrait
         filename = cls._get_portrait_filename(danger, card_number)
         return cls._portraits_hr[filename]
+
+    @classmethod
+    def get_portrait_for_card(cls, card: Card) -> pygame.Surface:
+        """Get appropriate portrait for a card (individual if interviewed, mob otherwise)"""
+        if card.is_collected:
+            # Check for individual portrait
+            if card.number in cls._soldier_portraits:
+                return cls._soldier_portraits[card.number]
+            # Try to load
+            portrait = cls._load_soldier_portrait(card.number)
+            if portrait:
+                return portrait
+
+        # Fall back to mob portrait
+        return cls.get_portrait_for_danger(card.danger, card.number)
+
+    @classmethod
+    def get_portrait_hr_for_card(cls, card: Card) -> pygame.Surface:
+        """Get high-resolution portrait for a card (individual if interviewed, mob otherwise)"""
+        if card.is_collected:
+            # Check for individual HR portrait
+            if card.number in cls._soldier_portraits_hr:
+                return cls._soldier_portraits_hr[card.number]
+            # Try to load individual portrait (loads both normal and HR)
+            cls._load_soldier_portrait(card.number)
+            if card.number in cls._soldier_portraits_hr:
+                return cls._soldier_portraits_hr[card.number]
+
+        # Fall back to mob portrait HR
+        return cls._get_portrait_hr_for_danger(card.danger, card.number)
 
     @classmethod
     def render(
@@ -203,8 +280,8 @@ class BattalionCard:
             if card.danger >= 3:
                 cls._draw_aura(screen, x, y, card.danger)
 
-            # Draw portrait from HR version
-            portrait_hr = cls._get_portrait_hr_for_danger(card.danger, card.number)
+            # Draw portrait from HR version (individual if collected, mob otherwise)
+            portrait_hr = cls.get_portrait_hr_for_card(card)
             portrait_size = int(target_width * cls.PORTRAIT_RADIUS_RATIO * 2)
             portrait = pygame.transform.smoothscale(
                 portrait_hr, (portrait_size, portrait_size)
@@ -223,6 +300,9 @@ class BattalionCard:
             cls._draw_number_circle_scaled(
                 card_surface, card.number, card.danger, scale
             )
+
+            # Draw soldier info text (scaled)
+            cls._draw_soldier_info_scaled(card_surface, card, is_interviewed, scale)
 
             # Draw selection/hover border (scaled)
             if is_selected:
@@ -249,8 +329,8 @@ class BattalionCard:
             if card.danger >= 3 and scale > 1.0:
                 cls._draw_aura(screen, x, y, card.danger)
 
-            # Draw portrait
-            portrait = cls.get_portrait_for_danger(card.danger, card.number)
+            # Draw portrait (individual if collected, mob otherwise)
+            portrait = cls.get_portrait_for_card(card)
             portrait_x = int(
                 cls.CARD_WIDTH * cls.PORTRAIT_CENTER_X - portrait.get_width() // 2
             )
@@ -264,6 +344,9 @@ class BattalionCard:
 
             # Draw number circle at top (shows card number, colored by danger)
             cls._draw_number_circle(card_surface, card.number, card.danger)
+
+            # Draw soldier info text (name, rank, unit, danger)
+            cls._draw_soldier_info(card_surface, card, is_interviewed)
 
             # Draw selection/hover effects
             if is_selected:
@@ -404,3 +487,113 @@ class BattalionCard:
         masked.blit(surface, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
 
         return masked
+
+    @classmethod
+    def _draw_soldier_info(
+        cls, surface: pygame.Surface, card: Card, is_interviewed: bool
+    ) -> None:
+        """Draw soldier info text on card (name, rank, unit, danger on 4 lines)"""
+        font = get_font(BATTALION_TEXT_FONT_SIZE)
+        danger_font = get_font(BATTALION_TEXT_FONT_SIZE, "bold")
+        center_x = cls.CARD_WIDTH // 2  # Name stays centered
+        detail_x = int(
+            cls.CARD_WIDTH * BATTALION_DETAIL_TEXT_X
+        )  # X for rank/unit/danger
+
+        # Text color
+        text_color = (50, 50, 50)
+        unknown_color = (120, 120, 120)
+
+        # Determine what to display
+        if is_interviewed and card.name:
+            name = card.name
+            rank = card.rank if card.rank else BATTALION_UNKNOWN_TEXT
+            unit = card.unit if card.unit else BATTALION_UNKNOWN_TEXT
+            color = text_color
+        else:
+            name = BATTALION_UNKNOWN_TEXT
+            rank = BATTALION_UNKNOWN_TEXT
+            unit = BATTALION_UNKNOWN_TEXT
+            color = unknown_color
+
+        # Draw name (centered)
+        name_y = int(cls.CARD_HEIGHT * BATTALION_NAME_Y)
+        name_text = font.render(name, True, color)
+        name_rect = name_text.get_rect(center=(center_x, name_y))
+        surface.blit(name_text, name_rect)
+
+        # Draw rank (uses detail_x)
+        rank_y = int(cls.CARD_HEIGHT * BATTALION_RANK_Y)
+        rank_text = font.render(rank, True, color)
+        rank_rect = rank_text.get_rect(center=(detail_x, rank_y))
+        surface.blit(rank_text, rank_rect)
+
+        # Draw unit (uses detail_x)
+        unit_y = int(cls.CARD_HEIGHT * BATTALION_UNIT_Y)
+        unit_text = font.render(unit, True, color)
+        unit_rect = unit_text.get_rect(center=(detail_x, unit_y))
+        surface.blit(unit_text, unit_rect)
+
+        # Draw danger level with text label and color (uses detail_x)
+        danger_y = int(cls.CARD_HEIGHT * BATTALION_DANGER_Y)
+        danger_color = get_danger_circle_color(card.danger)
+        danger_label = BATTALION_DANGER_LABELS.get(card.danger, "주의")
+        danger_text = danger_font.render(danger_label, True, danger_color)
+        danger_rect = danger_text.get_rect(center=(detail_x, danger_y))
+        surface.blit(danger_text, danger_rect)
+
+    @classmethod
+    def _draw_soldier_info_scaled(
+        cls, surface: pygame.Surface, card: Card, is_interviewed: bool, scale: float
+    ) -> None:
+        """Draw soldier info text on card (scaled version for HR rendering)"""
+        scaled_font_size = int(BATTALION_TEXT_FONT_SIZE * scale)
+        font = get_font(scaled_font_size)
+        danger_font = get_font(scaled_font_size, "bold")
+
+        scaled_width = int(cls.CARD_WIDTH * scale)
+        scaled_height = int(cls.CARD_HEIGHT * scale)
+        center_x = scaled_width // 2
+        detail_x = int(scaled_width * BATTALION_DETAIL_TEXT_X)
+
+        # Text color
+        text_color = (50, 50, 50)
+        unknown_color = (120, 120, 120)
+
+        # Determine what to display
+        if is_interviewed and card.name:
+            name = card.name
+            rank = card.rank if card.rank else BATTALION_UNKNOWN_TEXT
+            unit = card.unit if card.unit else BATTALION_UNKNOWN_TEXT
+            color = text_color
+        else:
+            name = BATTALION_UNKNOWN_TEXT
+            rank = BATTALION_UNKNOWN_TEXT
+            unit = BATTALION_UNKNOWN_TEXT
+            color = unknown_color
+
+        # Draw name (centered)
+        name_y = int(scaled_height * BATTALION_NAME_Y)
+        name_text = font.render(name, True, color)
+        name_rect = name_text.get_rect(center=(center_x, name_y))
+        surface.blit(name_text, name_rect)
+
+        # Draw rank (uses detail_x)
+        rank_y = int(scaled_height * BATTALION_RANK_Y)
+        rank_text = font.render(rank, True, color)
+        rank_rect = rank_text.get_rect(center=(detail_x, rank_y))
+        surface.blit(rank_text, rank_rect)
+
+        # Draw unit (uses detail_x)
+        unit_y = int(scaled_height * BATTALION_UNIT_Y)
+        unit_text = font.render(unit, True, color)
+        unit_rect = unit_text.get_rect(center=(detail_x, unit_y))
+        surface.blit(unit_text, unit_rect)
+
+        # Draw danger level with text label and color (uses detail_x)
+        danger_y = int(scaled_height * BATTALION_DANGER_Y)
+        danger_color = get_danger_circle_color(card.danger)
+        danger_label = BATTALION_DANGER_LABELS.get(card.danger, "주의")
+        danger_text = danger_font.render(danger_label, True, danger_color)
+        danger_rect = danger_text.get_rect(center=(detail_x, danger_y))
+        surface.blit(danger_text, danger_rect)

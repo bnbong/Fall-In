@@ -147,6 +147,26 @@ BATTALION_PORTRAIT_RADIUS_RATIO = 0.30  # Relative to card width
 BATTALION_NUMBER_CIRCLE_X = 0.5  # Centered
 BATTALION_NUMBER_CIRCLE_Y = 0.055  # Near top
 
+# Text display on card (relative positions for 4 lines)
+BATTALION_NAME_Y = 0.55  # Name position (below portrait)
+BATTALION_RANK_Y = 0.665  # Rank position
+BATTALION_UNIT_Y = 0.76  # Unit position
+BATTALION_DANGER_Y = 0.855  # Danger level position
+BATTALION_TEXT_FONT_SIZE = 10  # Font size for card text
+BATTALION_UNKNOWN_TEXT = "알 수 없음"  # Text for uninterviewed soldiers
+BATTALION_DETAIL_TEXT_X = (
+    0.65  # X position for rank/unit/danger (0.0=left, 0.5=center, 1.0=right)
+)
+
+# Danger level text labels
+BATTALION_DANGER_LABELS = {
+    1: "안전",
+    2: "관심",
+    3: "주의",
+    5: "매우위험",
+    7: "매우위험",
+}
+
 
 # =============================================================================
 # Commander Character Settings
@@ -223,3 +243,48 @@ SCREEN_SHAKE_INTENSITY = {
     7: 15,
 }
 SCREEN_SHAKE_DURATION = 0.2  # seconds
+
+
+# =============================================================================
+# Recruitment Scene Settings
+# =============================================================================
+# Button positions (relative to screen) - adjusted to match background elements
+RECRUIT_BTN_ROSTER_X = 550  # Notepad button X (center over notepad)
+RECRUIT_BTN_ROSTER_Y = 570  # Notepad button Y (slightly above table edge)
+RECRUIT_BTN_INTERVIEW_X = 790  # Microphone button X (near microphone)
+RECRUIT_BTN_INTERVIEW_Y = 630  # Microphone button Y (above table)
+RECRUIT_BTN_WIDTH = 120
+RECRUIT_BTN_HEIGHT = 40
+
+# Animation durations
+RECRUIT_ANNOUNCE_DURATION = 2.0  # Speaker announcement duration
+RECRUIT_WALK_IN_DURATION = 1.0  # Soldier walk-in duration
+RECRUIT_REVEAL_DURATION = 0.3  # Flash reveal duration
+RECRUIT_FADE_OUT_DURATION = 0.5  # Fade out duration
+
+# Interview display positions - adjusted for table perspective
+RECRUIT_PORTRAIT_X = 380  # Soldier portrait X (left side, behind table)
+RECRUIT_PORTRAIT_SIZE = 300  # Portrait display size
+
+# Soldier bust image specifications (for assets/images/characters/soldiers/)
+# Recommended size: 600x700px PNG with transparent background
+# Character should be centered horizontally, bottom edge at waist level
+RECRUIT_BUST_WIDTH = 400  # Display width for bust image
+RECRUIT_BUST_HEIGHT = 480  # Display height for bust image
+RECRUIT_BUST_ANCHOR_Y = 465  # Y position where bust bottom is anchored (table edge)
+RECRUIT_BUST_START_SCALE = 0.3  # Initial scale for zoom animation
+RECRUIT_BUST_END_SCALE = 1.0  # Final scale for zoom animation
+RECRUIT_SPEECH_BUBBLE_X = 100  # Speech bubble X (right of portrait)
+RECRUIT_SPEECH_BUBBLE_Y = 180  # Speech bubble Y (above portrait)
+RECRUIT_NOTES_X = 900  # Notes panel X (right side of screen)
+RECRUIT_NOTES_Y = 120  # Notes panel Y (upper right)
+RECRUIT_NOTES_WIDTH = 360  # Notes panel width
+RECRUIT_NOTES_HEIGHT = 320  # Notes panel height
+RECRUIT_CARD_X = 60  # Battalion card X (left lower)
+RECRUIT_CARD_Y = 350  # Battalion card Y (below portrait)
+
+# Roster view
+RECRUIT_ROSTER_COLS = 5  # Icons per row
+RECRUIT_ROSTER_ICON_SIZE = 70  # Icon size
+RECRUIT_ROSTER_ICON_GAP = 15  # Gap between icons
+RECRUIT_ROSTER_SCROLL_SPEED = 30  # Pixels per scroll

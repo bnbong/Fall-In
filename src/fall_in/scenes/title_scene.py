@@ -91,9 +91,13 @@ class TitleScene(Scene):
         print("Tutorial clicked")
 
     def _on_collection(self) -> None:
-        """Collection callback"""
-        # TODO: Implement collection scene
-        print("Collection clicked")
+        """Collection callback - open recruitment scene"""
+        from fall_in.core.game_manager import GameManager, GameState
+        from fall_in.scenes.recruitment_scene import RecruitmentScene
+
+        game = GameManager()
+        game.state = GameState.COLLECTION
+        game.change_scene(RecruitmentScene())
 
     def _on_settings(self) -> None:
         """Settings callback"""

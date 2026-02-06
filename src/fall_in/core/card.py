@@ -28,6 +28,7 @@ class Card:
     # Soldier data (for collected/interviewed soldiers)
     is_collected: bool = False
     name: Optional[str] = None
+    rank: Optional[str] = None  # 계급 (병장, 상병, 일병, 이병)
     unit: Optional[str] = None  # 소속 대대
     note: Optional[str] = None  # 특이 사항
 
@@ -96,14 +97,43 @@ def calculate_danger(number: int) -> int:
 def create_deck() -> list[Card]:
     """
     Create a standard deck of 104 cards with proper danger levels.
+    Loads soldier data from SoldierDataManager if available.
 
     Returns:
         List of 104 Card objects
     """
+    # Try to load soldier data
+    soldier_data = {}
+    try:
+        from fall_in.data.soldier_data import SoldierDataManager
+
+        manager = SoldierDataManager()
+        for soldier in manager.soldiers.values():
+            soldier_data[soldier.id] = soldier
+    except Exception:
+        pass  # Continue without soldier data if not available
+
     deck = []
     for number in range(1, 105):
         danger = calculate_danger(number)
-        deck.append(Card(number=number, danger=danger))
+
+        # Check for soldier data
+        if number in soldier_data:
+            soldier = soldier_data[number]
+            deck.append(
+                Card(
+                    number=number,
+                    danger=danger,
+                    is_collected=soldier.is_collected,
+                    name=soldier.name if soldier.is_collected else None,
+                    rank=soldier.rank if soldier.is_collected else None,
+                    unit=soldier.unit if soldier.is_collected else None,
+                    note=soldier.note if soldier.is_collected else None,
+                )
+            )
+        else:
+            deck.append(Card(number=number, danger=danger))
+
     return deck
 
 

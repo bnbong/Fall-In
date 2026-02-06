@@ -31,7 +31,10 @@ class SoldierFigure:
 
     # Cached sprite sheets: {danger_level: [frames]}
     _mob_sprites: dict[int, list[pygame.Surface]] = {}
+    # Cached individual soldier sprites: {soldier_id: [frames]}
+    _soldier_sprites: dict[int, list[pygame.Surface]] = {}
     _initialized: bool = False
+    _loader: Optional[AssetLoader] = None
 
     # Figure dimensions
     DISPLAY_WIDTH = FIGURE_DISPLAY_WIDTH
@@ -44,13 +47,13 @@ class SoldierFigure:
         if cls._initialized:
             return
 
-        loader = AssetLoader()
+        cls._loader = AssetLoader()
 
         # Load mob sprites for each danger level
         for danger in [1, 2, 3, 5, 7]:
             try:
                 sprite_path = f"sprites/figure_mob_danger_{danger}.png"
-                sheet = loader.load_image(sprite_path)
+                sheet = cls._loader.load_image(sprite_path)
                 frames = cls._extract_frames(sheet)
                 cls._mob_sprites[danger] = frames
             except Exception:
@@ -58,6 +61,24 @@ class SoldierFigure:
                 pass
 
         cls._initialized = True
+
+    @classmethod
+    def _load_soldier_sprite(cls, soldier_id: int) -> Optional[list[pygame.Surface]]:
+        """Lazy load individual soldier sprite if available"""
+        if soldier_id in cls._soldier_sprites:
+            return cls._soldier_sprites[soldier_id]
+
+        if cls._loader is None:
+            cls._loader = AssetLoader()
+
+        try:
+            sprite_path = f"sprites/figure_soldier_{soldier_id}.png"
+            sheet = cls._loader.load_image(sprite_path)
+            frames = cls._extract_frames(sheet)
+            cls._soldier_sprites[soldier_id] = frames
+            return frames
+        except Exception:
+            return None  # Sprite not found, will use mob sprite
 
     @classmethod
     def _extract_frames(cls, sheet: pygame.Surface) -> list[pygame.Surface]:
@@ -103,6 +124,20 @@ class SoldierFigure:
             frames = cls._mob_sprites[danger_key]
             return frames[frame % len(frames)]
         return None
+
+    @classmethod
+    def get_sprite_for_card(cls, card: Card, frame: int) -> Optional[pygame.Surface]:
+        """Get sprite frame for a card (individual if collected, mob otherwise)"""
+        cls.initialize()
+
+        if card.is_collected:
+            # Try to load individual soldier sprite
+            frames = cls._load_soldier_sprite(card.number)
+            if frames:
+                return frames[frame % len(frames)]
+
+        # Fall back to mob sprite
+        return cls.get_sprite_for_danger(card.danger, frame)
 
     def __init__(self, card: Card):
         self.card = card
@@ -195,8 +230,8 @@ class SoldierFigure:
         drop_offset = self.get_current_y_offset()
         figure_y -= drop_offset
 
-        # Get sprite
-        sprite = self.get_sprite_for_danger(self.card.danger, self.animation_frame)
+        # Get sprite (individual for collected soldiers, mob for others)
+        sprite = self.get_sprite_for_card(self.card, self.animation_frame)
 
         # Apply X offset
         adjusted_iso_x = iso_x + figure_x_offset
