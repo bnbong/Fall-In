@@ -23,6 +23,7 @@ from fall_in.ai.ai_player import create_ai_players
 from fall_in.entities.soldier_figure import SoldierFigure
 from fall_in.entities.commander import Commander
 from fall_in.entities.battalion_card import BattalionCard
+from fall_in.entities.dust_particle import DustEffect
 from fall_in.config import (
     SCREEN_WIDTH,
     SCREEN_HEIGHT,
@@ -63,6 +64,7 @@ from fall_in.config import (
     TURN_LOG_WIDTH,
     DEALING_CARD_COLOR,
     DEALING_CARD_BORDER_COLOR,
+    SCREEN_SHAKE_DURATION,
 )
 
 # Turn timer constant
@@ -144,13 +146,31 @@ class GameScene(Scene):
         # Commander (left side)
         self.commander = Commander()
 
+        # Dust effect system
+        self.dust_effect = DustEffect()
+
+        # Screen shake state
+        self.screen_shake_timer = 0.0
+        self.screen_shake_intensity = 0
+        self.screen_shake_offset = (0, 0)
+
+        # Persistent soldier figures on board (card.number -> SoldierFigure)
+        self.soldier_figures: dict[int, SoldierFigure] = {}
+
         # Load images
         loader = AssetLoader()
         self.background_image = loader.load_image(
             "ui/backgrounds/ingame_background.png"
         )
+        # Scale background slightly larger to prevent white edges during screen shake
+        # Max shake is 15px, so add 30px padding (15px each side)
+        self.shake_padding = 30
         self.background_image = pygame.transform.smoothscale(
-            self.background_image, (SCREEN_WIDTH, SCREEN_HEIGHT)
+            self.background_image,
+            (
+                SCREEN_WIDTH + self.shake_padding * 2,
+                SCREEN_HEIGHT + self.shake_padding * 2,
+            ),
         )
 
         # Load tile images (entity folder)
@@ -330,7 +350,14 @@ class GameScene(Scene):
         soldiers_to_draw.sort(key=lambda s: s[0])
 
         for depth, iso_x, iso_y, card in soldiers_to_draw:
-            figure = SoldierFigure(card)
+            # Get or create persistent figure for this card
+            if card.number not in self.soldier_figures:
+                figure = SoldierFigure(card)
+                figure.start_drop(iso_y)  # Start drop animation
+                self.soldier_figures[card.number] = figure
+            else:
+                figure = self.soldier_figures[card.number]
+
             figure.render(screen, iso_x, iso_y, ISO_TILE_HEIGHT)
 
     def _draw_ui(self, screen: pygame.Surface) -> None:
@@ -889,6 +916,45 @@ class GameScene(Scene):
         if self.message_timer > 0:
             self.message_timer -= dt
 
+        # Update screen shake
+        if self.screen_shake_timer > 0:
+            self.screen_shake_timer -= dt
+            import random
+
+            intensity = self.screen_shake_intensity
+            self.screen_shake_offset = (
+                random.randint(-intensity, intensity),
+                random.randint(-intensity, intensity),
+            )
+            if self.screen_shake_timer <= 0:
+                self.screen_shake_offset = (0, 0)
+
+        # Update dust particles
+        self.dust_effect.update(dt)
+
+        # Update soldier figures and trigger effects
+        board = self.rules.board
+        for row_idx in range(NUM_ROWS):
+            row = board.rows[row_idx]
+            for col in range(len(row)):
+                card = row[col]
+                if card.number in self.soldier_figures:
+                    figure = self.soldier_figures[card.number]
+                    spawn_dust, trigger_shake = figure.update(dt)
+
+                    if spawn_dust or trigger_shake:
+                        # Get figure position for effects
+                        visual_col = MAX_CARDS_PER_ROW - col
+                        iso_x, iso_y = self._cart_to_iso(visual_col, row_idx)
+
+                        if spawn_dust:
+                            dust_count = figure.get_dust_count()
+                            self.dust_effect.spawn(iso_x, iso_y, dust_count)
+
+                        if trigger_shake:
+                            self.screen_shake_intensity = figure.get_shake_intensity()
+                            self.screen_shake_timer = SCREEN_SHAKE_DURATION
+
         # Update dealing animation
         if self.phase == GamePhase.DEALING:
             self._update_dealing_animation(dt)
@@ -930,11 +996,19 @@ class GameScene(Scene):
 
     def render(self, screen: pygame.Surface) -> None:
         """Render scene to screen"""
-        # Draw background first
-        screen.blit(self.background_image, (0, 0))
+        # Get screen shake offset
+        shake_x, shake_y = self.screen_shake_offset
 
-        # Draw board first (background layer)
+        # Draw background first (with shake) - offset by padding to center
+        bg_x = shake_x - self.shake_padding
+        bg_y = shake_y - self.shake_padding
+        screen.blit(self.background_image, (bg_x, bg_y))
+
+        # Draw board first (background layer) - shake is applied in board drawing
         self._draw_board(screen)
+
+        # Draw dust particles (over board, under UI)
+        self.dust_effect.render(screen, self.screen_shake_offset)
 
         # Draw commander on top of board (speech bubble visible)
         self.commander.render(screen)

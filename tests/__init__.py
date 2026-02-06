@@ -1,1 +1,1 @@
-# Tests for Fall In! game
+# Tests for Fall In! game core game mechanics

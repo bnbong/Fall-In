@@ -186,3 +186,40 @@ ICON_HANGER_X = 150
 TURN_LOG_X = 10
 TURN_LOG_Y = 80
 TURN_LOG_WIDTH = 170
+
+
+# =============================================================================
+# Soldier Figure Sprite Settings
+# =============================================================================
+FIGURE_SPRITE_FRAMES = 4  # Number of animation frames in sprite sheet
+FIGURE_DISPLAY_WIDTH = 60  # Display width on screen
+FIGURE_DISPLAY_HEIGHT = 63  # Display height on screen
+FIGURE_DROP_DURATION = 0.3  # Drop animation duration in seconds
+FIGURE_DROP_HEIGHT = 150  # Height from which figure drops
+
+# Figure position offset on tile (fine-tuning)
+FIGURE_OFFSET_X = 0  # Horizontal offset (positive = right)
+FIGURE_OFFSET_Y = 20  # Vertical offset (positive = down)
+
+# Dust particle count by danger level
+DUST_PARTICLE_COUNT = {
+    1: 5,
+    2: 5,
+    3: 15,
+    4: 15,
+    5: 30,
+    6: 30,
+    7: 60,
+}
+
+# Screen shake intensity by danger level (pixels)
+SCREEN_SHAKE_INTENSITY = {
+    1: 0,
+    2: 0,
+    3: 2,
+    4: 4,
+    5: 6,
+    6: 9,
+    7: 15,
+}
+SCREEN_SHAKE_DURATION = 0.2  # seconds
