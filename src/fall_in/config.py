@@ -12,6 +12,9 @@ SCREEN_HEIGHT = 720
 FPS = 60
 GAME_TITLE = "헤쳐 모여! (Fall In!)"
 
+# Data directory for persistent storage
+DATA_DIR = Path(__file__).parent.parent.parent / "data"
+
 # =============================================================================
 # Colors
 # =============================================================================
@@ -288,3 +291,18 @@ RECRUIT_ROSTER_COLS = 5  # Icons per row
 RECRUIT_ROSTER_ICON_SIZE = 70  # Icon size
 RECRUIT_ROSTER_ICON_GAP = 15  # Gap between icons
 RECRUIT_ROSTER_SCROLL_SPEED = 30  # Pixels per scroll
+
+# =============================================================================
+# Interview Cost Settings
+# =============================================================================
+INTERVIEW_COST = 50  # 면담 1회 비용 (원)
+
+# =============================================================================
+# Frozen Food Settings (BX 냉동식품)
+# =============================================================================
+FROZEN_FOOD_MIN_COUNT = 1  # 최소 표시 개수
+FROZEN_FOOD_MAX_COUNT = 5  # 최대 표시 개수
+FROZEN_FOOD_SIZE = 80  # 아이콘 크기
+FROZEN_FOOD_GAP = 15  # 아이템 간 간격
+FROZEN_FOOD_TABLE_Y = 530  # 테이블 위 Y 위치
+FROZEN_FOOD_TABLE_X = 500  # 테이블 중앙 X 위치

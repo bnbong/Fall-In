@@ -10,6 +10,7 @@ import pygame
 from fall_in.scenes.base_scene import Scene
 from fall_in.utils.asset_loader import AssetLoader, get_font
 from fall_in.entities.battalion_card import BattalionCard
+from fall_in.entities.frozen_food import FrozenFood
 from fall_in.data.soldier_data import SoldierInfo, get_soldier_manager
 from fall_in.config import (
     SCREEN_WIDTH,
@@ -43,6 +44,7 @@ from fall_in.config import (
     RECRUIT_ROSTER_ICON_SIZE,
     RECRUIT_ROSTER_ICON_GAP,
     RECRUIT_ROSTER_SCROLL_SPEED,
+    INTERVIEW_COST,
 )
 
 
@@ -135,6 +137,9 @@ class RecruitmentScene(Scene):
         self.toast_message = ""
         self.toast_timer = 0.0
 
+        # Frozen food entity
+        self.frozen_food = FrozenFood()
+
     def on_enter(self) -> None:
         """Reset to initial state"""
         self.phase = RecruitPhase.INITIAL
@@ -222,21 +227,36 @@ class RecruitmentScene(Scene):
 
     def _start_interview(self) -> None:
         """Start interview flow"""
+        # Check if player has enough currency
+        from fall_in.core.game_manager import GameManager
+
+        game_manager = GameManager()
+
+        if not game_manager.has_currency(INTERVIEW_COST):
+            self.toast_message = f"수당이 부족합니다! (필요: {INTERVIEW_COST}원, 보유: {game_manager.currency}원)"
+            self.toast_timer = 2.5
+            return
+
         self.current_soldier = self.soldier_manager.get_uncollected_soldier()
         if self.current_soldier:
+            # Immediately deduct interview cost and collect soldier
+            # (prevents exploit of closing game before confirm)
+            game_manager.spend_currency(INTERVIEW_COST)
+            self.soldier_manager.collect_soldier(self.current_soldier.id)
+
             self.phase = RecruitPhase.ANNOUNCING
             self.phase_timer = 0.0
             self.soldier_alpha = 0
             self.soldier_y_offset = 50
             self.element_alpha = 0
+            # Set frozen food count based on soldier data
+            self.frozen_food.set_count(self.current_soldier.frozen_food_count)
         else:
             self.toast_message = "모든 병사를 모집했습니다!"
             self.toast_timer = 2.0
 
     def _confirm_interview(self) -> None:
-        """Confirm interview and collect soldier"""
-        if self.current_soldier:
-            self.soldier_manager.collect_soldier(self.current_soldier.id)
+        """Confirm interview - soldier already collected at start"""
         self.phase = RecruitPhase.SOLDIER_LEAVING
         self.phase_timer = 0.0
 
@@ -317,6 +337,8 @@ class RecruitmentScene(Scene):
         elif self.phase == RecruitPhase.INTERVIEW_DISPLAY:
             # Fade in elements
             self.element_alpha = min(255, self.element_alpha + int(dt * 500))
+            # Update frozen food animation
+            self.frozen_food.update(dt)
 
         elif self.phase == RecruitPhase.SOLDIER_LEAVING:
             # Fade out
@@ -388,6 +410,29 @@ class RecruitmentScene(Scene):
         text_rect = text.get_rect(center=self.btn_interview_rect.center)
         screen.blit(text, text_rect)
 
+        # Display currency and interview cost
+        from fall_in.core.game_manager import GameManager
+
+        game_manager = GameManager()
+
+        # Currency info box (top-right)
+        currency_font = get_font(14)
+        cost_font = get_font(12)
+
+        info_rect = pygame.Rect(SCREEN_WIDTH - 180, 20, 160, 55)
+        pygame.draw.rect(screen, (255, 255, 255, 220), info_rect, border_radius=8)
+        pygame.draw.rect(screen, AIR_FORCE_BLUE, info_rect, width=2, border_radius=8)
+
+        currency_text = currency_font.render(
+            f"보유 수당: {game_manager.currency}원", True, AIR_FORCE_BLUE
+        )
+        screen.blit(currency_text, (info_rect.x + 10, info_rect.y + 8))
+
+        cost_text = cost_font.render(
+            f"면담 비용: {INTERVIEW_COST}원", True, (100, 100, 100)
+        )
+        screen.blit(cost_text, (info_rect.x + 10, info_rect.y + 32))
+
     def _render_announcement(self, screen: pygame.Surface) -> None:
         """Render speaker announcement"""
         # Draw speech bubble near speaker (top-left)
@@ -451,6 +496,10 @@ class RecruitmentScene(Scene):
             flash_surface.fill((255, 255, 255))
             flash_surface.set_alpha(self.flash_alpha)
             screen.blit(flash_surface, (0, 0))
+
+        # Render frozen food on table (only visible during interview)
+        if self.phase in (RecruitPhase.INTERVIEW_DISPLAY, RecruitPhase.SOLDIER_LEAVING):
+            self.frozen_food.render(screen, alpha=min(255, self.element_alpha))
 
         # Only show UI elements after entering
         if self.phase != RecruitPhase.SOLDIER_ENTERING:

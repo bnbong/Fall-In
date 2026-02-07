@@ -2,7 +2,9 @@
 Game Manager - Core game state and scene management
 """
 
+import json
 from enum import Enum, auto
+from pathlib import Path
 from typing import Optional, TYPE_CHECKING
 
 import pygame
@@ -32,6 +34,7 @@ class GameManager:
     """
 
     _instance: Optional["GameManager"] = None
+    _DATA_FILE = "player_data.json"
 
     def __new__(cls) -> "GameManager":
         if cls._instance is None:
@@ -59,9 +62,56 @@ class GameManager:
         self.bgm_volume = 0.5
         self.sfx_volume = 0.7
 
+        # Load saved currency
+        self.load_currency()
+
+    def _get_data_path(self) -> Path:
+        """Get path to player data file"""
+        # Try to find data folder relative to config
+        from fall_in.config import DATA_DIR
+
+        return DATA_DIR / self._DATA_FILE
+
+    def load_currency(self) -> None:
+        """Load currency from saved data"""
+        try:
+            data_path = self._get_data_path()
+            if data_path.exists():
+                with open(data_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    self.currency = data.get("currency", 0)
+        except Exception:
+            self.currency = 0
+
+    def save_currency(self) -> None:
+        """Save currency to data file"""
+        try:
+            data_path = self._get_data_path()
+            data_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(data_path, "w", encoding="utf-8") as f:
+                json.dump({"currency": self.currency}, f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass  # Fail silently
+
     def add_currency(self, amount: int) -> None:
         """Add currency (수당) to player wallet"""
         self.currency += amount
+        self.save_currency()
+
+    def spend_currency(self, amount: int) -> bool:
+        """
+        Spend currency if sufficient funds available.
+        Returns True if successful, False if insufficient funds.
+        """
+        if self.currency >= amount:
+            self.currency -= amount
+            self.save_currency()
+            return True
+        return False
+
+    def has_currency(self, amount: int) -> bool:
+        """Check if player has enough currency"""
+        return self.currency >= amount
 
     def initialize(self) -> None:
         """Initialize pygame and create game window"""
@@ -113,6 +163,7 @@ class GameManager:
 
     def cleanup(self) -> None:
         """Clean up resources"""
+        self.save_currency()  # Save before exit
         pygame.mixer.quit()
         pygame.quit()
 

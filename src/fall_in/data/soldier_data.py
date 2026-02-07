@@ -21,6 +21,7 @@ class SoldierInfo:
     note: str
     intro: str
     danger: int
+    frozen_food_count: int = 2  # 면담 시 냉동식품 개수 (1-5)
     is_collected: bool = False
 
     def to_card(self) -> Card:
@@ -75,6 +76,7 @@ class SoldierDataManager:
                     danger=soldier_data.get(
                         "danger", calculate_danger(soldier_data["id"])
                     ),
+                    frozen_food_count=soldier_data.get("frozen_food_count", 2),
                 )
                 self.soldiers[soldier.id] = soldier
         except FileNotFoundError:

@@ -129,6 +129,41 @@
 
 ---
 
+## 냉동식품 아이콘 (Frozen Food)
+
+면담 장면에서 테이블 위에 표시되는 BX 냉동식품 아이콘입니다.
+
+### 규격
+
+- **크기**: 40px × 40px (기본값, config에서 조정 가능)
+- **형식**: PNG (투명 배경)
+- **위치**: 테이블 중앙 X=500, Y=530 (config에서 조정 가능)
+
+### 필요한 에셋
+
+| 파일명 | 설명 |
+|--------|------|
+| `frozen_food_ramen.png` | 라면 |
+| `frozen_food_dumpling.png` | 만두 |
+| `frozen_food_kimbap.png` | 김밥 |
+| `frozen_food_burger.png` | 햄버거 |
+| `frozen_food_chicken.png` | 치킨 |
+| `frozen_food_pizza.png` | 피자 |
+| `frozen_food_tteokbokki.png` | 떡볶이 |
+
+### Config 설정 (`config.py`)
+
+```python
+FROZEN_FOOD_SIZE = 40       # 아이콘 크기 (px)
+FROZEN_FOOD_GAP = 10        # 아이템 간 간격 (px)
+FROZEN_FOOD_TABLE_X = 500   # 테이블 중앙 X 위치
+FROZEN_FOOD_TABLE_Y = 530   # 테이블 위 Y 위치
+FROZEN_FOOD_MIN_COUNT = 1   # 최소 표시 개수
+FROZEN_FOOD_MAX_COUNT = 5   # 최대 표시 개수
+```
+
+---
+
 ## UI 요소
 
 ### 상단바 (Top Bar)

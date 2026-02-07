@@ -7,7 +7,8 @@
             "unit": "제1작전대대",
             "note": "성실하고 책임감 있는 병사.\n체력이 좋아 행군에 강함.",
             "intro": "충성! 제1작전대대 김민수 일병입니다!",
-            "danger": 1
+            "danger": 1,
+            "frozen_food_count": 1
         },
         {
             "id": 2,
@@ -16,7 +17,8 @@
             "unit": "제1작전대대",
             "note": "조용하고 차분한 성격.\n정비 업무에 능숙함.",
             "intro": "충성! 이준호 일병, 작전대대 소속입니다.",
-            "danger": 1
+            "danger": 1,
+            "frozen_food_count": 1
         },
         {
             "id": 3,
@@ -25,7 +27,8 @@
             "unit": "제2작전대대",
             "note": "동기들 사이에서 인기 많음.\n유머 감각이 뛰어남.",
             "intro": "충성! 박서준 상병입니다, 잘 부탁드립니다!",
-            "danger": 1
+            "danger": 1,
+            "frozen_food_count": 2
         },
         {
             "id": 5,
@@ -34,7 +37,8 @@
             "unit": "정비대대",
             "note": "가끔 지각하는 습관이 있음.\n그러나 업무 능력은 뛰어남.",
             "intro": "충...충성! 정우성 일병입니다...",
-            "danger": 2
+            "danger": 2,
+            "frozen_food_count": 5
         },
         {
             "id": 10,
@@ -43,7 +47,8 @@
             "unit": "경비대대",
             "note": "체력이 매우 좋으나 성격이 급함.\n종종 후임들과 마찰이 있음.",
             "intro": "충성! 경비대대 최강호 상병입니다!",
-            "danger": 3
+            "danger": 3,
+            "frozen_food_count": 2
         },
         {
             "id": 11,
@@ -52,7 +57,8 @@
             "unit": "본부대대",
             "note": "본부 근무 중 문제 행동 다수.\n하지만 업무 파악력은 뛰어남.\n상관과의 갈등 이력 있음.",
             "intro": "...충성. 강동원 병장입니다.",
-            "danger": 5
+            "danger": 5,
+            "frozen_food_count": 3
         },
         {
             "id": 22,
@@ -61,7 +67,8 @@
             "unit": "제1작전대대",
             "note": "훈련 중 규정 위반 경력 있음.\n동기들에게 영향력이 큼.\n주의가 필요한 병사.",
             "intro": "충성! 송중기 상병입니다!",
-            "danger": 5
+            "danger": 5,
+            "frozen_food_count": 2
         },
         {
             "id": 55,
@@ -70,7 +77,8 @@
             "unit": "특수작전대",
             "note": "다수의 영창 기록 보유.\n폭력 성향 있음.\n분대 편성 시 격리 필요.\n지휘관 지시 불이행 다수.",
             "intro": "...뭘 봐.",
-            "danger": 7
+            "danger": 7,
+            "frozen_food_count": 5
         }
     ],
     "note": "Complete soldier data (1-104) will be added manually with graphics assets. Danger is calculated based on 6 Nimmt rules."
