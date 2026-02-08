@@ -1,9 +1,28 @@
 # 헤쳐 모여! (Fall In!)
 
-> "준비 된 인원부터 각 분대로 헤쳐모여!"
+<p align="center">
+    <img align="top" width="20%" src="assets/images/fall_in_logo.png" alt="Fall In!"/>
+</p>
+<p align="center">
+    <img align="top" width="40%" src="assets/images/fall_in_logo_text.png" alt="Fall In title"/>
+</p>
+<p align="center">
+<em>"준비 된 인원부터 각 분대로 헤쳐모여!"</em>
+</p>
+<p align="center">
+<img src="https://img.shields.io/badge/python-3670A0?style=flat-square&logo=Python&logoColor=ffdd54"/>
+<a href="https://bnbong.itch.io/" target="_blank">
+    <img src="https://img.shields.io/badge/Itch-%23FF0B34.svg?style=flat-square&logo=Itch.io&logoColor=white" alt="Itch.io download page">
+</a>
+<a href="https://github.com/bnbong/Fall-In/releases" target="_blank">
+    <img src="https://img.shields.io/github/v/release/bnbong/Fall-In" alt="GitHub Release">
+</a>
+</p>
+
+---
 
 대한민국 공군 ORI 훈련을 배경으로 한 전략 카드 게임.  
-보드게임 '젝스님트(6 Nimmt!)'를 기반으로 제작되었습니다.
+보드게임 '[젝스님트(6 Nimmt!)](https://boardgamegeek.com/boardgame/432/take-5)'를 기반으로 제작되었습니다.
 
 ## 게임 소개
 

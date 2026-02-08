@@ -22,19 +22,54 @@ class FrozenFood:
     """
     BX 냉동식품 엔티티 - 면담 테이블 위에 표시되는 음식 아이템.
     게임 스토리: 병사에게 맛있는 것을 사주며 면담을 진행하는 설정.
-    
+
     에셋 경로: assets/images/ui/frozen_food_{name}.png
     """
 
     # Available food types with fallback colors (used if asset not found)
     FOOD_TYPES = [
-        {"name": "ramen", "label": "라면", "color": (255, 200, 50), "accent": (200, 100, 30)},
-        {"name": "dumpling", "label": "만두", "color": (240, 220, 180), "accent": (180, 150, 100)},
-        {"name": "kimbap", "label": "김밥", "color": (60, 140, 60), "accent": (20, 80, 20)},
-        {"name": "burger", "label": "햄버거", "color": (200, 150, 80), "accent": (150, 80, 40)},
-        {"name": "chicken", "label": "치킨", "color": (220, 180, 100), "accent": (180, 120, 60)},
-        {"name": "pizza", "label": "피자", "color": (255, 180, 80), "accent": (200, 80, 50)},
-        {"name": "tteokbokki", "label": "떡볶이", "color": (200, 60, 40), "accent": (150, 30, 20)},
+        {
+            "name": "ramen",
+            "label": "라면",
+            "color": (255, 200, 50),
+            "accent": (200, 100, 30),
+        },
+        {
+            "name": "dumpling",
+            "label": "만두",
+            "color": (240, 220, 180),
+            "accent": (180, 150, 100),
+        },
+        {
+            "name": "kimbap",
+            "label": "김밥",
+            "color": (60, 140, 60),
+            "accent": (20, 80, 20),
+        },
+        {
+            "name": "burger",
+            "label": "햄버거",
+            "color": (200, 150, 80),
+            "accent": (150, 80, 40),
+        },
+        {
+            "name": "chicken",
+            "label": "치킨",
+            "color": (220, 180, 100),
+            "accent": (180, 120, 60),
+        },
+        {
+            "name": "pizza",
+            "label": "피자",
+            "color": (255, 180, 80),
+            "accent": (200, 80, 50),
+        },
+        {
+            "name": "tteokbokki",
+            "label": "떡볶이",
+            "color": (200, 60, 40),
+            "accent": (150, 30, 20),
+        },
     ]
 
     # Cached assets: {name: pygame.Surface}

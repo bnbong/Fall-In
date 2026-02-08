@@ -142,6 +142,9 @@ HAND_HOVER_SCALE = 1.20  # Scale factor on hover (1.15 = 15% larger)
 # =============================================================================
 # Battalion Card Settings
 # =============================================================================
+NUMBER_CIRCLE_RADIUS = 14
+NUMBER_CIRCLE_FONT_SIZE = 12
+
 BATTALION_CARD_WIDTH = 150
 BATTALION_CARD_HEIGHT = 253
 BATTALION_PORTRAIT_CENTER_X = 0.5  # Centered horizontally

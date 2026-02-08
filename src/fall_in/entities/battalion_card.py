@@ -13,6 +13,8 @@ from fall_in.utils.asset_loader import AssetLoader, get_font
 from fall_in.utils.danger_utils import get_danger_circle_color
 from fall_in.config import (
     WHITE,
+    NUMBER_CIRCLE_RADIUS,
+    NUMBER_CIRCLE_FONT_SIZE,
     BATTALION_CARD_WIDTH,
     BATTALION_CARD_HEIGHT,
     BATTALION_PORTRAIT_CENTER_X,
@@ -25,7 +27,6 @@ from fall_in.config import (
     BATTALION_UNIT_Y,
     BATTALION_DANGER_Y,
     BATTALION_TEXT_FONT_SIZE,
-    BATTALION_UNKNOWN_TEXT,
     BATTALION_DANGER_LABELS,
     BATTALION_DETAIL_TEXT_X,
 )
@@ -40,6 +41,10 @@ class BattalionCard:
     - Aura effects based on danger level
     - Text info (name, rank, unit)
     """
+
+    # Constants for number circle
+    NUMBER_CIRCLE_RADIUS = NUMBER_CIRCLE_RADIUS
+    NUMBER_CIRCLE_FONT_SIZE = NUMBER_CIRCLE_FONT_SIZE
 
     # Card display size (from config)
     CARD_WIDTH = BATTALION_CARD_WIDTH
@@ -61,16 +66,12 @@ class BattalionCard:
         7: (100, 50, 150, 140),  # Dark purple glow
     }
 
-    # Portrait mappings by danger level
+    # Fall back mob character portrait mappings by danger level (not used until got error on loading interviewed soldier's info)
     PORTRAIT_FILES = {
-        1: ["portrait_mob_danger_1_1.png", "portrait_mob_danger_1_2.png"],
-        2: ["portrait_mob_danger_2_1.png", "portrait_mob_danger_2_2.png"],
-        3: [
-            "portrait_mob_danger_3_1.png",
-            "portrait_mob_danger_3_2.png",
-            "portrait_mob_danger_3_3.png",
-        ],
-        5: ["portrait_mob_danger_5_1.png", "portrait_mob_danger_5_2.png"],
+        1: ["portrait_mob_danger_1.png"],
+        2: ["portrait_mob_danger_2.png"],
+        3: ["portrait_mob_danger_3.png"],
+        5: ["portrait_mob_danger_5.png"],
         7: ["portrait_mob_danger_7.png"],
     }
 
@@ -79,10 +80,12 @@ class BattalionCard:
 
     # Cached assets (normal resolution)
     _card_base: Optional[pygame.Surface] = None
+    _card_back: Optional[pygame.Surface] = None  # Card back for uncollected
     _portraits: dict[str, pygame.Surface] = {}
 
     # Cached assets (high resolution for hover)
     _card_base_hr: Optional[pygame.Surface] = None
+    _card_back_hr: Optional[pygame.Surface] = None  # Card back HR
     _portraits_hr: dict[str, pygame.Surface] = {}
 
     # Cached individual soldier portraits
@@ -114,6 +117,20 @@ class BattalionCard:
         cls._card_base = pygame.transform.smoothscale(
             base_img, (cls.CARD_WIDTH, cls.CARD_HEIGHT)
         )
+
+        # Load card back for uncollected soldiers
+        try:
+            back_img = loader.load_image("cards/batallion_card_back.png")
+            cls._card_back = pygame.transform.smoothscale(
+                back_img, (cls.CARD_WIDTH, cls.CARD_HEIGHT)
+            )
+            cls._card_back_hr = pygame.transform.smoothscale(
+                back_img, (hr_width, hr_height)
+            )
+        except Exception:
+            # Fallback: use base if back not found
+            cls._card_back = cls._card_base
+            cls._card_back_hr = cls._card_base_hr
 
         # Load all portrait images at both resolutions
         for danger_level, files in cls.PORTRAIT_FILES.items():
@@ -211,7 +228,7 @@ class BattalionCard:
 
     @classmethod
     def get_portrait_for_card(cls, card: Card) -> pygame.Surface:
-        """Get appropriate portrait for a card (individual if interviewed, mob otherwise)"""
+        """Get appropriate portrait for a card (individual if interviewed)"""
         if card.is_collected:
             # Check for individual portrait
             if card.number in cls._soldier_portraits:
@@ -226,7 +243,7 @@ class BattalionCard:
 
     @classmethod
     def get_portrait_hr_for_card(cls, card: Card) -> pygame.Surface:
-        """Get high-resolution portrait for a card (individual if interviewed, mob otherwise)"""
+        """Get high-resolution portrait for a card (individual if interviewed)"""
         if card.is_collected:
             # Check for individual HR portrait
             if card.number in cls._soldier_portraits_hr:
@@ -263,6 +280,9 @@ class BattalionCard:
         """
         cls.initialize()
 
+        # Aura margin for combined surface
+        aura_margin = 35 if card.danger >= 3 else 0
+
         # Determine if we should use high-res rendering (for hover/scale > 1)
         use_hr = scale > 1.0
 
@@ -270,39 +290,61 @@ class BattalionCard:
             # Use HR assets and scale down to target size (sharper than scaling up)
             target_width = int(cls.CARD_WIDTH * scale)
             target_height = int(cls.CARD_HEIGHT * scale)
+            scaled_margin = int(aura_margin * scale)
 
-            # Start from HR card base
-            card_surface = pygame.transform.smoothscale(
-                cls._card_base_hr, (target_width, target_height)
+            # Create combined surface (card + aura margin)
+            combined_width = target_width + scaled_margin * 2
+            combined_height = target_height + scaled_margin * 2
+            combined_surface = pygame.Surface(
+                (combined_width, combined_height), pygame.SRCALPHA
             )
 
-            # Draw aura effect for high danger cards
+            # Draw aura on combined surface (centered)
             if card.danger >= 3:
-                cls._draw_aura(screen, x, y, card.danger)
+                cls._draw_aura_on_surface(
+                    combined_surface,
+                    scaled_margin,
+                    scaled_margin,
+                    target_width,
+                    target_height,
+                    card.danger,
+                    scale,
+                )
 
-            # Draw portrait from HR version (individual if collected, mob otherwise)
-            portrait_hr = cls.get_portrait_hr_for_card(card)
-            portrait_size = int(target_width * cls.PORTRAIT_RADIUS_RATIO * 2)
-            portrait = pygame.transform.smoothscale(
-                portrait_hr, (portrait_size, portrait_size)
-            )
-            portrait_x = int(
-                target_width * cls.PORTRAIT_CENTER_X - portrait.get_width() // 2
-            )
-            portrait_y = int(
-                target_height * cls.PORTRAIT_CENTER_Y - portrait.get_height() // 2
-            )
+            # Use card back for uncollected soldiers, base for collected
+            if card.is_collected:
+                card_surface = pygame.transform.smoothscale(
+                    cls._card_base_hr, (target_width, target_height)
+                )
 
-            masked_portrait = cls._apply_circular_mask(portrait)
-            card_surface.blit(masked_portrait, (portrait_x, portrait_y))
+                # Draw portrait from HR version (individual if collected)
+                portrait_hr = cls.get_portrait_hr_for_card(card)
+                portrait_size = int(target_width * cls.PORTRAIT_RADIUS_RATIO * 2)
+                portrait = pygame.transform.smoothscale(
+                    portrait_hr, (portrait_size, portrait_size)
+                )
+                portrait_x = int(
+                    target_width * cls.PORTRAIT_CENTER_X - portrait.get_width() // 2
+                )
+                portrait_y = int(
+                    target_height * cls.PORTRAIT_CENTER_Y - portrait.get_height() // 2
+                )
 
-            # Draw number circle (scaled)
+                masked_portrait = cls._apply_circular_mask(portrait)
+                card_surface.blit(masked_portrait, (portrait_x, portrait_y))
+
+                # Draw soldier info text (scaled) - only for collected
+                cls._draw_soldier_info_scaled(card_surface, card, is_interviewed, scale)
+            else:
+                # Uncollected: use card back, no portrait, no info text
+                card_surface = pygame.transform.smoothscale(
+                    cls._card_back_hr, (target_width, target_height)
+                )
+
+            # Draw number circle (scaled) - always show
             cls._draw_number_circle_scaled(
                 card_surface, card.number, card.danger, scale
             )
-
-            # Draw soldier info text (scaled)
-            cls._draw_soldier_info_scaled(card_surface, card, is_interviewed, scale)
 
             # Draw selection/hover border (scaled)
             if is_selected:
@@ -321,32 +363,57 @@ class BattalionCard:
                     width=int(3 * scale),
                     border_radius=int(8 * scale),
                 )
+
+            # Blit card onto combined surface
+            combined_surface.blit(card_surface, (scaled_margin, scaled_margin))
+            final_surface = combined_surface
+
         else:
             # Normal resolution rendering
-            card_surface = cls._card_base.copy()
-
-            # Draw aura effect for high danger cards
-            if card.danger >= 3 and scale > 1.0:
-                cls._draw_aura(screen, x, y, card.danger)
-
-            # Draw portrait (individual if collected, mob otherwise)
-            portrait = cls.get_portrait_for_card(card)
-            portrait_x = int(
-                cls.CARD_WIDTH * cls.PORTRAIT_CENTER_X - portrait.get_width() // 2
-            )
-            portrait_y = int(
-                cls.CARD_HEIGHT * cls.PORTRAIT_CENTER_Y - portrait.get_height() // 2
+            # Create combined surface (card + aura margin)
+            combined_width = cls.CARD_WIDTH + aura_margin * 2
+            combined_height = cls.CARD_HEIGHT + aura_margin * 2
+            combined_surface = pygame.Surface(
+                (combined_width, combined_height), pygame.SRCALPHA
             )
 
-            # Create circular mask for portrait
-            masked_portrait = cls._apply_circular_mask(portrait)
-            card_surface.blit(masked_portrait, (portrait_x, portrait_y))
+            # Draw aura on combined surface
+            if card.danger >= 3:
+                cls._draw_aura_on_surface(
+                    combined_surface,
+                    aura_margin,
+                    aura_margin,
+                    cls.CARD_WIDTH,
+                    cls.CARD_HEIGHT,
+                    card.danger,
+                    1.0,
+                )
 
-            # Draw number circle at top (shows card number, colored by danger)
+            # Use card back for uncollected soldiers, base for collected
+            if card.is_collected:
+                card_surface = cls._card_base.copy()
+
+                # Draw portrait (individual if collected)
+                portrait = cls.get_portrait_for_card(card)
+                portrait_x = int(
+                    cls.CARD_WIDTH * cls.PORTRAIT_CENTER_X - portrait.get_width() // 2
+                )
+                portrait_y = int(
+                    cls.CARD_HEIGHT * cls.PORTRAIT_CENTER_Y - portrait.get_height() // 2
+                )
+
+                # Create circular mask for portrait
+                masked_portrait = cls._apply_circular_mask(portrait)
+                card_surface.blit(masked_portrait, (portrait_x, portrait_y))
+
+                # Draw soldier info text (name, rank, unit, danger) - only for collected
+                cls._draw_soldier_info(card_surface, card, is_interviewed)
+            else:
+                # Uncollected: use card back, no portrait, no info text
+                card_surface = cls._card_back.copy()
+
+            # Draw number circle at top (shows card number, colored by danger) - always show
             cls._draw_number_circle(card_surface, card.number, card.danger)
-
-            # Draw soldier info text (name, rank, unit, danger)
-            cls._draw_soldier_info(card_surface, card, is_interviewed)
 
             # Draw selection/hover effects
             if is_selected:
@@ -366,28 +433,46 @@ class BattalionCard:
                     border_radius=8,
                 )
 
+            # Blit card onto combined surface
+            combined_surface.blit(card_surface, (aura_margin, aura_margin))
+            final_surface = combined_surface
+
         # Apply rotation if needed (rotozoom for anti-aliased rotation)
         if rotation != 0.0:
-            card_surface = pygame.transform.rotozoom(card_surface, -rotation, 1.0)
+            final_surface = pygame.transform.rotozoom(final_surface, -rotation, 1.0)
 
         # Calculate draw position (center the rotated/scaled surface)
-        rect = card_surface.get_rect()
+        rect = final_surface.get_rect()
         if scale != 1.0:
             # When scaled, center horizontally and align to original bottom
             rect.centerx = x + cls.CARD_WIDTH // 2
-            rect.bottom = y + cls.CARD_HEIGHT
+            rect.bottom = y + cls.CARD_HEIGHT + int(aura_margin * scale)
         else:
-            rect.topleft = (x, y)
+            # Center on original card position
+            rect.centerx = x + cls.CARD_WIDTH // 2
+            rect.centery = y + cls.CARD_HEIGHT // 2
 
         # Blit to screen
-        screen.blit(card_surface, rect)
+        screen.blit(final_surface, rect)
 
         return pygame.Rect(x, y, cls.CARD_WIDTH, cls.CARD_HEIGHT)
 
     @classmethod
-    def _draw_aura(cls, screen: pygame.Surface, x: int, y: int, danger: int) -> None:
-        """Draw glowing aura behind the card"""
-        # Find the highest applicable aura
+    def _draw_aura_on_surface(
+        cls,
+        surface: pygame.Surface,
+        card_x: int,
+        card_y: int,
+        card_width: int,
+        card_height: int,
+        danger: int,
+        scale: float = 1.0,
+    ) -> None:
+        """Draw animated fire-like aura on the given surface around card position"""
+        import math
+        import time
+
+        # Find the highest applicable aura color
         aura_color = None
         for threshold in sorted(cls.AURA_COLORS.keys()):
             if danger >= threshold:
@@ -396,35 +481,48 @@ class BattalionCard:
         if aura_color is None:
             return
 
-        # Create aura surface with alpha
-        aura_size = int(cls.CARD_WIDTH * 1.3)
-        aura_surface = pygame.Surface((aura_size, aura_size + 20), pygame.SRCALPHA)
+        # Get animation time for wave effect
+        t = time.time() * 3  # Speed of animation
 
-        # Draw multiple ellipses for glow effect
-        center = (aura_size // 2, (aura_size + 20) // 2)
-        for i in range(3):
-            size_factor = 1.0 - i * 0.15
-            alpha = aura_color[3] // (i + 1)
-            color = (*aura_color[:3], alpha)
-            pygame.draw.ellipse(
-                aura_surface,
-                color,
-                (
-                    center[0] - int(aura_size * size_factor // 2),
-                    center[1] - int((aura_size + 20) * size_factor // 2),
-                    int(aura_size * size_factor),
-                    int((aura_size + 20) * size_factor),
-                ),
-            )
+        # Center of card on the surface
+        center_x = card_x + card_width // 2
+        center_y = card_y + card_height // 2
 
-        # Position aura behind card
-        aura_x = x - (aura_size - cls.CARD_WIDTH) // 2
-        aura_y = y - (aura_size + 20 - cls.CARD_HEIGHT) // 2
-        screen.blit(aura_surface, (aura_x, aura_y))
+        # Draw multiple flame layers around card perimeter
+        num_flames = 12
+        base_flame_size = int(15 * scale)
 
-    # Constants for number circle
-    NUMBER_CIRCLE_RADIUS = 14
-    NUMBER_CIRCLE_FONT_SIZE = 12
+        for i in range(num_flames):
+            # Distribute flames around the card perimeter
+            angle = (i / num_flames) * 2 * math.pi + t * 0.3
+
+            # Calculate flame position on card edge (ellipse path)
+            ellipse_x = math.cos(angle) * (card_width // 2 + int(5 * scale))
+            ellipse_y = math.sin(angle) * (card_height // 2 + int(5 * scale))
+
+            flame_x = center_x + int(ellipse_x)
+            flame_y = center_y + int(ellipse_y)
+
+            # Flame size varies with time
+            wave = math.sin(t * 2 + i * 0.5)
+            current_size = base_flame_size + int(wave * 5 * scale)
+
+            # Draw flame (multiple circles for soft glow)
+            for j in range(4):
+                size = int(current_size * (1 - j * 0.2))
+                alpha = int(aura_color[3] * (1 - j * 0.25))
+                color = (*aura_color[:3], max(10, alpha))
+
+                # Offset for flickering effect
+                flicker_x = int(math.sin(t * 5 + i + j) * 2 * scale)
+                flicker_y = int(math.cos(t * 4 + i + j) * 2 * scale)
+
+                pygame.draw.circle(
+                    surface,
+                    color,
+                    (flame_x + flicker_x, flame_y + flicker_y - int(j * 3 * scale)),
+                    max(1, size),
+                )
 
     @classmethod
     def _draw_number_circle(
@@ -502,35 +600,27 @@ class BattalionCard:
 
         # Text color
         text_color = (50, 50, 50)
-        unknown_color = (120, 120, 120)
 
-        # Determine what to display
-        if is_interviewed and card.name:
-            name = card.name
-            rank = card.rank if card.rank else BATTALION_UNKNOWN_TEXT
-            unit = card.unit if card.unit else BATTALION_UNKNOWN_TEXT
-            color = text_color
-        else:
-            name = BATTALION_UNKNOWN_TEXT
-            rank = BATTALION_UNKNOWN_TEXT
-            unit = BATTALION_UNKNOWN_TEXT
-            color = unknown_color
+        # Get card info (this function is only called for collected soldiers)
+        name = card.name if card.name else "미확인"
+        rank = card.rank if card.rank else "미확인"
+        unit = card.unit if card.unit else "미확인"
 
         # Draw name (centered)
         name_y = int(cls.CARD_HEIGHT * BATTALION_NAME_Y)
-        name_text = font.render(name, True, color)
+        name_text = font.render(name, True, text_color)
         name_rect = name_text.get_rect(center=(center_x, name_y))
         surface.blit(name_text, name_rect)
 
         # Draw rank (uses detail_x)
         rank_y = int(cls.CARD_HEIGHT * BATTALION_RANK_Y)
-        rank_text = font.render(rank, True, color)
+        rank_text = font.render(rank, True, text_color)
         rank_rect = rank_text.get_rect(center=(detail_x, rank_y))
         surface.blit(rank_text, rank_rect)
 
         # Draw unit (uses detail_x)
         unit_y = int(cls.CARD_HEIGHT * BATTALION_UNIT_Y)
-        unit_text = font.render(unit, True, color)
+        unit_text = font.render(unit, True, text_color)
         unit_rect = unit_text.get_rect(center=(detail_x, unit_y))
         surface.blit(unit_text, unit_rect)
 
@@ -558,35 +648,27 @@ class BattalionCard:
 
         # Text color
         text_color = (50, 50, 50)
-        unknown_color = (120, 120, 120)
 
-        # Determine what to display
-        if is_interviewed and card.name:
-            name = card.name
-            rank = card.rank if card.rank else BATTALION_UNKNOWN_TEXT
-            unit = card.unit if card.unit else BATTALION_UNKNOWN_TEXT
-            color = text_color
-        else:
-            name = BATTALION_UNKNOWN_TEXT
-            rank = BATTALION_UNKNOWN_TEXT
-            unit = BATTALION_UNKNOWN_TEXT
-            color = unknown_color
+        # Get card info (this function is only called for collected soldiers)
+        name = card.name if card.name else "미확인"
+        rank = card.rank if card.rank else "미확인"
+        unit = card.unit if card.unit else "미확인"
 
         # Draw name (centered)
         name_y = int(scaled_height * BATTALION_NAME_Y)
-        name_text = font.render(name, True, color)
+        name_text = font.render(name, True, text_color)
         name_rect = name_text.get_rect(center=(center_x, name_y))
         surface.blit(name_text, name_rect)
 
         # Draw rank (uses detail_x)
         rank_y = int(scaled_height * BATTALION_RANK_Y)
-        rank_text = font.render(rank, True, color)
+        rank_text = font.render(rank, True, text_color)
         rank_rect = rank_text.get_rect(center=(detail_x, rank_y))
         surface.blit(rank_text, rank_rect)
 
         # Draw unit (uses detail_x)
         unit_y = int(scaled_height * BATTALION_UNIT_Y)
-        unit_text = font.render(unit, True, color)
+        unit_text = font.render(unit, True, text_color)
         unit_rect = unit_text.get_rect(center=(detail_x, unit_y))
         surface.blit(unit_text, unit_rect)
 

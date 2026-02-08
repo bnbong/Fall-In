@@ -70,7 +70,7 @@ class SoldierDataManager:
                     id=soldier_data["id"],
                     name=soldier_data.get("name", f"병사 {soldier_data['id']}"),
                     rank=soldier_data.get("rank", "일병"),
-                    unit=soldier_data.get("unit", "미정"),
+                    unit=soldier_data.get("unit", "미확인"),
                     note=soldier_data.get("note", ""),
                     intro=soldier_data.get("intro", "필승!"),
                     danger=soldier_data.get(
