@@ -1,5 +1,9 @@
 """
-Soldier Data Manager - Load soldier data and manage collected state
+Soldier Data Manager - Load soldier data and manage collected state.
+
+Handles loading soldier definitions from soldiers.json, tracking
+which soldiers have been collected (interviewed), and providing
+soldier data for the recruitment and game scenes.
 """
 
 import json
@@ -8,6 +12,7 @@ from pathlib import Path
 from typing import Optional
 
 from fall_in.core.card import Card, calculate_danger
+from fall_in.config import DATA_DIR
 
 
 @dataclass
@@ -21,7 +26,9 @@ class SoldierInfo:
     note: str
     intro: str
     danger: int
-    frozen_food_count: int = 2  # 면담 시 냉동식품 개수 (1-5)
+    frozen_food_count: int = (
+        2  # Number of frozen food items shown during interview (1-5)
+    )
     is_collected: bool = False
 
     def to_card(self) -> Card:
@@ -50,16 +57,12 @@ class SoldierDataManager:
         self._load_collected_state()
 
     def _get_save_path(self) -> Path:
-        """Get path to save file in data directory"""
-        # Use project data directory
-        data_dir = Path(__file__).parent.parent.parent.parent / "data"
-        return data_dir / self.SAVE_FILE
+        """Get path to save file in data directory."""
+        return DATA_DIR / self.SAVE_FILE
 
     def _load_soldier_data(self) -> None:
-        """Load soldier data from soldiers.json"""
-        data_path = (
-            Path(__file__).parent.parent.parent.parent / "data" / "soldiers.json"
-        )
+        """Load soldier data from soldiers.json."""
+        data_path = DATA_DIR / "soldiers.json"
 
         try:
             with open(data_path, "r", encoding="utf-8") as f:
@@ -83,7 +86,7 @@ class SoldierDataManager:
             pass  # No soldier data yet
 
     def _load_collected_state(self) -> None:
-        """Load collected soldier IDs from save file"""
+        """Load collected soldier IDs from save file."""
         save_path = self._get_save_path()
 
         try:
@@ -99,7 +102,7 @@ class SoldierDataManager:
             pass  # No save file yet
 
     def save_collected_state(self) -> None:
-        """Save collected soldier IDs to file"""
+        """Save collected soldier IDs to file."""
         save_path = self._get_save_path()
 
         data = {"collected_ids": sorted(list(self.collected_ids))}

@@ -1,12 +1,21 @@
 """
-Speech Bubble - Reusable animated speech bubble component
+Speech Bubble - Reusable animated speech bubble component.
 """
 
 import pygame
 from typing import Optional
 
 from fall_in.utils.asset_loader import get_font
-from fall_in.config import AIR_FORCE_BLUE, WHITE
+from fall_in.config import (
+    AIR_FORCE_BLUE,
+    WHITE,
+    SPEECH_BUBBLE_APPEAR_DURATION,
+    SPEECH_BUBBLE_DEFAULT_VISIBLE_DURATION,
+    SPEECH_BUBBLE_DISAPPEAR_DURATION,
+    SPEECH_BUBBLE_FONT_SIZE,
+    SPEECH_BUBBLE_PADDING,
+    SPEECH_BUBBLE_TAIL_SIZE,
+)
 
 
 class SpeechBubble:
@@ -20,11 +29,6 @@ class SpeechBubble:
     STATE_APPEARING = 1
     STATE_VISIBLE = 2
     STATE_DISAPPEARING = 3
-
-    # Animation durations (seconds)
-    APPEAR_DURATION = 0.3
-    VISIBLE_DURATION = 2.5
-    DISAPPEAR_DURATION = 0.3
 
     def __init__(
         self,
@@ -43,39 +47,44 @@ class SpeechBubble:
         self.timer = 0.0
         self.alpha = 0  # 0-255
 
+        # Per-instance visible duration (avoids mutating class-level constant)
+        self._visible_duration = SPEECH_BUBBLE_DEFAULT_VISIBLE_DURATION
+
         # Cached surfaces
         self._bubble_surface: Optional[pygame.Surface] = None
         self._needs_rebuild = True
 
     def show(self, text: str, duration: Optional[float] = None) -> None:
-        """Show speech bubble with text"""
+        """Show speech bubble with text."""
         self.text = text
         self.state = self.STATE_APPEARING
         self.timer = 0.0
         self._needs_rebuild = True
 
         if duration is not None:
-            self.VISIBLE_DURATION = duration
+            self._visible_duration = duration
+        else:
+            self._visible_duration = SPEECH_BUBBLE_DEFAULT_VISIBLE_DURATION
 
     def hide(self) -> None:
-        """Start hiding animation"""
+        """Start hiding animation."""
         if self.state == self.STATE_VISIBLE:
             self.state = self.STATE_DISAPPEARING
             self.timer = 0.0
 
     def is_visible(self) -> bool:
-        """Check if bubble is currently visible or animating"""
+        """Check if bubble is currently visible or animating."""
         return self.state != self.STATE_HIDDEN
 
     def update(self, dt: float) -> None:
-        """Update animation state"""
+        """Update animation state."""
         if self.state == self.STATE_HIDDEN:
             return
 
         self.timer += dt
 
         if self.state == self.STATE_APPEARING:
-            progress = min(self.timer / self.APPEAR_DURATION, 1.0)
+            progress = min(self.timer / SPEECH_BUBBLE_APPEAR_DURATION, 1.0)
             self.alpha = int(255 * progress)
 
             if progress >= 1.0:
@@ -84,12 +93,12 @@ class SpeechBubble:
                 self.alpha = 255
 
         elif self.state == self.STATE_VISIBLE:
-            if self.timer >= self.VISIBLE_DURATION:
+            if self.timer >= self._visible_duration:
                 self.state = self.STATE_DISAPPEARING
                 self.timer = 0.0
 
         elif self.state == self.STATE_DISAPPEARING:
-            progress = min(self.timer / self.DISAPPEAR_DURATION, 1.0)
+            progress = min(self.timer / SPEECH_BUBBLE_DISAPPEAR_DURATION, 1.0)
             self.alpha = int(255 * (1.0 - progress))
 
             if progress >= 1.0:
@@ -97,14 +106,14 @@ class SpeechBubble:
                 self.alpha = 0
 
     def _build_bubble(self) -> pygame.Surface:
-        """Build the speech bubble surface"""
-        font = get_font(14)
-        padding = 12
-        tail_size = 15
+        """Build the speech bubble surface with word-wrapped text."""
+        font = get_font(SPEECH_BUBBLE_FONT_SIZE)
+        padding = SPEECH_BUBBLE_PADDING
+        tail_size = SPEECH_BUBBLE_TAIL_SIZE
 
         # Word wrap text
         words = self.text.split()
-        lines = []
+        lines: list[str] = []
         current_line = ""
 
         for word in words:
@@ -175,7 +184,7 @@ class SpeechBubble:
         return surface
 
     def render(self, screen: pygame.Surface) -> None:
-        """Render speech bubble"""
+        """Render speech bubble on screen."""
         if self.state == self.STATE_HIDDEN or self.alpha <= 0:
             return
 

@@ -1,5 +1,5 @@
 """
-Player - Represents a player (human or AI) in the game
+Player - Represents a player (human or AI) in the game.
 """
 
 from dataclasses import dataclass, field
@@ -7,10 +7,11 @@ from typing import Optional
 from enum import Enum, auto
 
 from fall_in.core.card import Card
+from fall_in.config import GAME_OVER_SCORE
 
 
 class PlayerType(Enum):
-    """Type of player"""
+    """Type of player."""
 
     HUMAN = auto()
     AI = auto()
@@ -35,30 +36,30 @@ class Player:
     is_eliminated: bool = False
 
     def add_cards(self, cards: list[Card]) -> None:
-        """Add cards to player's hand"""
+        """Add cards to player's hand and sort them."""
         self.hand.extend(cards)
         self.hand.sort()
 
     def remove_card(self, card: Card) -> None:
-        """Remove a card from hand"""
+        """Remove a card from hand."""
         if card in self.hand:
             self.hand.remove(card)
 
     def select_card(self, card: Card) -> None:
-        """Select a card to play this turn"""
+        """Select a card to play this turn."""
         if card not in self.hand:
             raise ValueError(f"Card {card} not in hand")
         self.selected_card = card
 
     def select_card_by_index(self, index: int) -> Card:
-        """Select a card by index in hand"""
+        """Select a card by index in hand."""
         if not 0 <= index < len(self.hand):
             raise ValueError(f"Invalid card index: {index}")
         self.selected_card = self.hand[index]
         return self.selected_card
 
     def play_selected_card(self) -> Card:
-        """Remove and return the selected card"""
+        """Remove and return the selected card."""
         if self.selected_card is None:
             raise ValueError("No card selected")
         card = self.selected_card
@@ -67,27 +68,35 @@ class Player:
         return card
 
     def add_penalty(self, score: int) -> None:
-        """Add penalty points to player"""
+        """Add penalty points to player."""
         self.penalty_score += score
 
-    def check_elimination(self, threshold: int = 66) -> bool:
-        """Check if player is eliminated (score >= threshold)"""
+    def check_elimination(self, threshold: int = GAME_OVER_SCORE) -> bool:
+        """
+        Check if player is eliminated (score >= threshold).
+
+        Args:
+            threshold: Elimination score threshold (default from config).
+
+        Returns:
+            True if the player is eliminated.
+        """
         if self.penalty_score >= threshold:
             self.is_eliminated = True
         return self.is_eliminated
 
     def clear_hand(self) -> None:
-        """Clear the player's hand"""
+        """Clear the player's hand."""
         self.hand.clear()
         self.selected_card = None
 
     def reset_for_new_round(self) -> None:
-        """Reset player state for a new round (keep penalty score)"""
+        """Reset player state for a new round (keep penalty score)."""
         self.hand.clear()
         self.selected_card = None
 
     def reset_for_new_game(self) -> None:
-        """Reset player state for a new game"""
+        """Reset player state for a new game."""
         self.hand.clear()
         self.selected_card = None
         self.penalty_score = 0
@@ -95,12 +104,12 @@ class Player:
 
     @property
     def hand_size(self) -> int:
-        """Number of cards in hand"""
+        """Number of cards in hand."""
         return len(self.hand)
 
     @property
     def is_ai(self) -> bool:
-        """Check if player is AI"""
+        """Check if player is AI."""
         return self.player_type == PlayerType.AI
 
     def __repr__(self) -> str:
@@ -118,12 +127,12 @@ def create_players(
     Create a list of players for the game.
 
     Args:
-        human_name: Name for the human player
-        ai_count: Number of AI players (default 3)
-        ai_names: Optional list of AI names
+        human_name: Name for the human player.
+        ai_count: Number of AI players (default 3).
+        ai_names: Optional list of AI names.
 
     Returns:
-        List of Player objects (1 human + AI players)
+        List of Player objects (1 human + AI players).
     """
     players = []
 

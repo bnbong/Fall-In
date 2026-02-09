@@ -1,14 +1,28 @@
 """
-DustParticle - Simple particle effect for soldier landing
+DustParticle - Simple particle effect for soldier landing impact.
 """
 
 import random
 
 import pygame
 
+from fall_in.config import (
+    DUST_GRAVITY,
+    DUST_SPEED_MIN,
+    DUST_SPEED_MAX,
+    DUST_UPWARD_MIN,
+    DUST_UPWARD_MAX,
+    DUST_LIFETIME_MIN,
+    DUST_LIFETIME_MAX,
+    DUST_SIZE_MIN,
+    DUST_SIZE_MAX,
+    DUST_SPAWN_SPREAD_X,
+    DUST_SPAWN_SPREAD_Y,
+)
+
 
 class DustParticle:
-    """Single dust particle with position, velocity, and lifetime"""
+    """Single dust particle with position, velocity, and lifetime."""
 
     # Sand/dust color palette
     COLORS = [
@@ -23,22 +37,15 @@ class DustParticle:
         self.y = y
 
         # Random velocity (outward and upward)
-        angle = random.uniform(-1.0, 1.0)  # Spread angle
-        speed = random.uniform(30, 80)
+        angle = random.uniform(-1.0, 1.0)
+        speed = random.uniform(DUST_SPEED_MIN, DUST_SPEED_MAX)
         self.vx = angle * speed
-        self.vy = random.uniform(-40, -80)  # Upward
+        self.vy = random.uniform(DUST_UPWARD_MIN, DUST_UPWARD_MAX)
 
-        # Gravity
-        self.gravity = 150
-
-        # Lifetime
-        self.lifetime = random.uniform(0.3, 0.6)
+        self.gravity = DUST_GRAVITY
+        self.lifetime = random.uniform(DUST_LIFETIME_MIN, DUST_LIFETIME_MAX)
         self.age = 0.0
-
-        # Size
-        self.size = random.uniform(2, 5)
-
-        # Color
+        self.size = random.uniform(DUST_SIZE_MIN, DUST_SIZE_MAX)
         self.color = random.choice(self.COLORS)
 
     @property
@@ -47,19 +54,15 @@ class DustParticle:
 
     @property
     def alpha(self) -> int:
-        """Fade out over lifetime"""
+        """Fade out over lifetime."""
         progress = self.age / self.lifetime
         return int(255 * (1 - progress))
 
     def update(self, dt: float) -> None:
-        """Update particle position and age"""
+        """Update particle position and age."""
         self.age += dt
-
-        # Apply velocity
         self.x += self.vx * dt
         self.y += self.vy * dt
-
-        # Apply gravity
         self.vy += self.gravity * dt
 
         # Shrink over time
@@ -67,15 +70,13 @@ class DustParticle:
         self.size = max(0, self.size - shrink_rate * dt)
 
     def render(self, screen: pygame.Surface) -> None:
-        """Render particle"""
+        """Render particle as a small fading circle."""
         if not self.is_alive or self.size < 1:
             return
 
-        # Create small circle with alpha
         alpha = self.alpha
         color_with_alpha = (*self.color, alpha)
 
-        # Draw circle
         size = int(self.size)
         if size >= 1:
             surf = pygame.Surface((size * 2, size * 2), pygame.SRCALPHA)
@@ -84,31 +85,27 @@ class DustParticle:
 
 
 class DustEffect:
-    """Manager for multiple dust particles"""
+    """Manager for multiple dust particles."""
 
     def __init__(self):
         self.particles: list[DustParticle] = []
 
     def spawn(self, x: float, y: float, count: int) -> None:
-        """Spawn multiple dust particles at position"""
+        """Spawn multiple dust particles at position."""
         for _ in range(count):
-            # Add slight randomness to spawn position
-            px = x + random.uniform(-10, 10)
-            py = y + random.uniform(-5, 5)
+            px = x + random.uniform(-DUST_SPAWN_SPREAD_X, DUST_SPAWN_SPREAD_X)
+            py = y + random.uniform(-DUST_SPAWN_SPREAD_Y, DUST_SPAWN_SPREAD_Y)
             self.particles.append(DustParticle(px, py))
 
     def update(self, dt: float) -> None:
-        """Update all particles and remove dead ones"""
+        """Update all particles and remove dead ones."""
         for particle in self.particles:
             particle.update(dt)
-
-        # Remove dead particles
         self.particles = [p for p in self.particles if p.is_alive]
 
     def render(self, screen: pygame.Surface, offset: tuple[int, int] = (0, 0)) -> None:
-        """Render all particles with optional offset (for screen shake)"""
+        """Render all particles with optional offset (for screen shake)."""
         for particle in self.particles:
-            # Apply offset
             original_x, original_y = particle.x, particle.y
             particle.x += offset[0]
             particle.y += offset[1]
@@ -117,5 +114,5 @@ class DustEffect:
 
     @property
     def is_active(self) -> bool:
-        """Check if any particles are still alive"""
+        """Check if any particles are still alive."""
         return len(self.particles) > 0

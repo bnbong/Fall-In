@@ -1,11 +1,15 @@
 """
-Game Scene - Main gameplay screen with isometric board
-Integrated with actual game rules and AI players
+Game Scene - Main gameplay screen with isometric board.
+
+Integrates actual game rules, AI players, and sequential card placement
+animations on a 4-row isometric board.
 """
 
-import pygame
+import random
 from enum import Enum, auto
 from typing import Optional
+
+import pygame
 
 from fall_in.scenes.base_scene import Scene
 from fall_in.utils.asset_loader import get_font, AssetLoader
@@ -42,17 +46,20 @@ from fall_in.config import (
     BOARD_OFFSET_Y,
     GAME_OVER_SCORE,
     Difficulty,
-    # Hand layout settings
+    TURN_TIMEOUT_SECONDS,
+    TIMER_WARNING_THRESHOLD,
+    TIMER_DANGER_THRESHOLD,
+    # Hand layout
     HAND_FAN_SPREAD,
     HAND_CARD_OVERLAP,
     HAND_Y_OFFSET,
     HAND_HOVER_POP_DISTANCE,
     HAND_HOVER_SCALE,
-    # Game Board Settings
+    # Board
     ROW_OFFSETS,
     BARRACKS_X,
     BARRACKS_Y,
-    # UI Settings
+    # UI
     UI_TOP_BAR_Y,
     UI_TOP_BAR_HEIGHT,
     UI_ELEMENT_PLAYER_ORDER_X,
@@ -64,32 +71,36 @@ from fall_in.config import (
     TURN_LOG_WIDTH,
     DEALING_CARD_COLOR,
     DEALING_CARD_BORDER_COLOR,
+    TOP_BAR_BG_COLOR,
+    TOP_BAR_OUTLINE_COLOR,
     SCREEN_SHAKE_DURATION,
+    SCREEN_SHAKE_PADDING,
+    CARD_DEAL_DELAY,
+    CARD_DEAL_DURATION,
+    AI_THINKING_DURATION,
+    PLACEMENT_PAUSE_DURATION,
 )
-
-# Turn timer constant
-TURN_TIMEOUT_SECONDS = 30.0
 
 
 class GamePhase(Enum):
-    """UI game phase"""
+    """UI game phase states."""
 
-    STARTING = auto()  # Round starting animation
-    DEALING = auto()  # Cards being dealt from barracks
-    SELECTING = auto()  # Player selecting card (30s timer)
-    AI_THINKING = auto()  # AI players selecting
-    REVEALING = auto()  # Cards being revealed
-    PLACING_PLAYER = auto()  # Animating single player's card placement
-    PENALTY_ANIMATION = auto()  # Animating penalty cards to hangar/player
-    ROW_SELECT = auto()  # Player must select row
-    ROUND_END = auto()  # Round ended
-    GAME_OVER = auto()  # Game over
+    STARTING = auto()
+    DEALING = auto()
+    SELECTING = auto()
+    AI_THINKING = auto()
+    REVEALING = auto()
+    PLACING_PLAYER = auto()
+    PENALTY_ANIMATION = auto()
+    ROW_SELECT = auto()
+    ROUND_END = auto()
+    GAME_OVER = auto()
 
 
 class GameScene(Scene):
     """
     Main game scene with isometric 4x6 board.
-    Integrated with game rules for actual gameplay.
+    Integrates with game rules for actual gameplay.
     """
 
     ROW_OFFSETS = ROW_OFFSETS
@@ -119,24 +130,22 @@ class GameScene(Scene):
         self.dragging = False
         self.drag_pos = (0, 0)
 
-        # Turn timer (30 seconds)
+        # Turn timer
         self.turn_timer = TURN_TIMEOUT_SECONDS
 
         # Turn log for display
         self.turn_log: list[TurnResult] = []
 
         # Sequential placement state
-        self.placement_queue: list[tuple] = []  # (player, card, order_idx) tuples
+        self.placement_queue: list[tuple] = []
         self.current_placement: Optional[TurnResult] = None
         self.placement_tween: Optional[Tween] = None
         self.penalty_tweens: TweenGroup = TweenGroup()
         self.penalty_cards_animating: list[tuple[Card, Tween]] = []
 
         # Dealing animation state
-        self.dealing_cards: list[
-            tuple[Card, Tween]
-        ] = []  # (card, tween) for flying cards
-        self.dealt_card_count = 0  # Number of cards that have arrived
+        self.dealing_cards: list[tuple[Card, Tween]] = []
+        self.dealt_card_count = 0
 
         # Animation state
         self.phase_timer = 0.0
@@ -157,31 +166,26 @@ class GameScene(Scene):
         # Persistent soldier figures on board (card.number -> SoldierFigure)
         self.soldier_figures: dict[int, SoldierFigure] = {}
 
-        # Load images
+        # Load background image (with extra padding for shake)
         loader = AssetLoader()
         self.background_image = loader.load_image(
             "ui/backgrounds/ingame_background.png"
         )
-        # Scale background slightly larger to prevent white edges during screen shake
-        # Max shake is 15px, so add 30px padding (15px each side)
-        self.shake_padding = 30
         self.background_image = pygame.transform.smoothscale(
             self.background_image,
             (
-                SCREEN_WIDTH + self.shake_padding * 2,
-                SCREEN_HEIGHT + self.shake_padding * 2,
+                SCREEN_WIDTH + SCREEN_SHAKE_PADDING * 2,
+                SCREEN_HEIGHT + SCREEN_SHAKE_PADDING * 2,
             ),
         )
 
-        # Load tile images (entity folder)
-        # tile_1: empty slot (beige), tile_2: safe (yellow), tile_3: warning (red), tile_4: danger (purple)
+        # Load tile images
         self.tile_images = {
             TileType.EMPTY.value: loader.load_image("entity/tile_1.png"),
             TileType.SAFE.value: loader.load_image("entity/tile_2.png"),
             TileType.WARNING.value: loader.load_image("entity/tile_3.png"),
             TileType.DANGER.value: loader.load_image("entity/tile_4.png"),
         }
-        # Scale tiles to match isometric tile size
         for key in self.tile_images:
             self.tile_images[key] = pygame.transform.smoothscale(
                 self.tile_images[key], (int(ISO_TILE_WIDTH), int(ISO_TILE_HEIGHT))
@@ -190,32 +194,29 @@ class GameScene(Scene):
         # Start round
         self._start_new_round()
 
+    # ------------------------------------------------------------------
+    # Round lifecycle
+    # ------------------------------------------------------------------
+
     def _start_new_round(self) -> None:
-        """Start a new round"""
+        """Start a new round."""
         self.rules.start_new_round()
         self.turn_log.clear()
         self.placement_queue.clear()
         self.message = f"라운드 {self.rules.round_state.round_number} 시작!"
         self.message_timer = 2.0
 
-        # Set commander expression before dealing (so it's ready when cards start dealing)
         committed = self.rules.get_player_committed_score(self.human_player)
         self.commander.set_expression_from_danger(committed)
 
-        # Start dealing animation
         self._start_dealing_animation()
 
     def _start_dealing_animation(self) -> None:
-        """Start cards dealing animation from barracks to hand"""
+        """Start cards dealing animation from barracks to hand."""
         self.phase = GamePhase.DEALING
         self.dealing_cards.clear()
         self.dealt_card_count = 0
 
-        # Barracks position (source)
-        barracks_x = BARRACKS_X
-        barracks_y = BARRACKS_Y
-
-        # Hand positions (targets)
         hand = self.human_player.hand
         num_cards = len(hand)
         card_width = 60
@@ -224,29 +225,25 @@ class GameScene(Scene):
         start_x = (SCREEN_WIDTH - total_width) // 2
         hand_y = SCREEN_HEIGHT - 120
 
-        # Create tweens for each card with staggered start
         for i, card in enumerate(hand):
             target_x = start_x + i * spacing + card_width // 2
             target_y = hand_y + 40
 
-            # Delay based on card index (0.1s per card)
-            delay = i * 0.1
-
             tween = Tween(
-                start=(barracks_x, barracks_y),
+                start=(BARRACKS_X, BARRACKS_Y),
                 end=(target_x, target_y),
-                duration=0.4,
+                duration=CARD_DEAL_DURATION,
                 easing="ease_out",
-                delay=delay,
+                delay=i * CARD_DEAL_DELAY,
             )
             self.dealing_cards.append((card, tween))
 
     def _update_dealing_animation(self, dt: float) -> None:
-        """Update dealing animation and check for completion"""
+        """Update dealing animation and check for completion."""
         all_complete = True
         arrived_count = 0
 
-        for card, tween in self.dealing_cards:
+        for _, tween in self.dealing_cards:
             tween.update(dt)
             if tween.is_complete:
                 arrived_count += 1
@@ -256,21 +253,25 @@ class GameScene(Scene):
         self.dealt_card_count = arrived_count
 
         if all_complete:
-            # All cards dealt, move to selecting phase
             self.phase = GamePhase.SELECTING
             self.turn_timer = TURN_TIMEOUT_SECONDS
             self.dealing_cards.clear()
 
+    # ------------------------------------------------------------------
+    # Isometric helpers
+    # ------------------------------------------------------------------
+
     def _cart_to_iso(self, x: int, y: int) -> tuple[int, int]:
-        """Convert cartesian coordinates to isometric.
-
-        x = column position within row (card index)
-        y = row index (0-3 for the 4 game rows)
-
-        ROW_SPACING adds extra vertical space between rows only.
-        ROW_OFFSETS corrects position so first tiles align diagonally.
         """
-        # Get row-specific offset
+        Convert cartesian (col, row) to isometric screen coordinates.
+
+        Args:
+            x: Column position within row (card index).
+            y: Row index (0-3).
+
+        Returns:
+            (iso_x, iso_y) screen coordinates.
+        """
         row_x_offset, row_y_offset = (
             self.ROW_OFFSETS[y] if y < len(self.ROW_OFFSETS) else (0, 0)
         )
@@ -282,7 +283,11 @@ class GameScene(Scene):
             + y * ROW_SPACING
             + row_y_offset
         )
-        return iso_x, iso_y
+        return int(iso_x), int(iso_y)
+
+    # ------------------------------------------------------------------
+    # Board drawing
+    # ------------------------------------------------------------------
 
     def _draw_isometric_tile(
         self,
@@ -291,50 +296,39 @@ class GameScene(Scene):
         y: int,
         tile_type: TileType = TileType.EMPTY,
     ) -> None:
-        """Draw a single isometric tile using tile images"""
+        """Draw a single isometric tile using tile images."""
         iso_x, iso_y = self._cart_to_iso(x, y)
-
-        # Get tile image (default to empty if type not found)
         tile_image = self.tile_images.get(
             tile_type.value, self.tile_images[TileType.EMPTY.value]
         )
-
-        # Position tile centered on iso_x, iso_y
         tile_rect = tile_image.get_rect(center=(iso_x, iso_y))
         screen.blit(tile_image, tile_rect)
 
     def _draw_board(self, screen: pygame.Surface) -> None:
-        """Draw the isometric game board with soldier figures"""
+        """Draw the isometric game board with soldier figures."""
         board = self.rules.board
 
-        # First pass: collect all tiles with depth for proper z-ordering
+        # Collect all tiles with depth for proper z-ordering
         tiles_to_draw = []
         for row_idx in range(NUM_ROWS):
             for col in range(MAX_CARDS_PER_ROW + 1):
                 visual_col = MAX_CARDS_PER_ROW - col
                 row = board.rows[row_idx]
 
-                if col < len(row):
-                    card = row[col]
-                    tile_type = get_tile_type_by_danger(card.danger)
-                else:
-                    tile_type = TileType.EMPTY
-
-                # Calculate depth for z-ordering (higher iso_y = more in front)
+                tile_type = (
+                    get_tile_type_by_danger(row[col].danger)
+                    if col < len(row)
+                    else TileType.EMPTY
+                )
                 iso_x, iso_y = self._cart_to_iso(visual_col, row_idx)
-                depth = iso_y
-                tiles_to_draw.append((depth, visual_col, row_idx, tile_type))
+                tiles_to_draw.append((iso_y, visual_col, row_idx, tile_type))
 
-        # Sort tiles by depth (draw smaller iso_y first = back, larger iso_y last = front)
         tiles_to_draw.sort(key=lambda t: t[0])
 
-        # Draw tiles in sorted order (back to front)
-        for depth, visual_col, row_idx, tile_type in tiles_to_draw:
+        for _, visual_col, row_idx, tile_type in tiles_to_draw:
             self._draw_isometric_tile(screen, visual_col, row_idx, tile_type)
 
-        # Second pass: draw soldier figures
-        # Sort by isometric depth: draw back (low row + high visual_col) first
-        # Collect all cards with positions
+        # Draw soldier figures (sorted by depth)
         soldiers_to_draw = []
         for row_idx in range(NUM_ROWS):
             row = board.rows[row_idx]
@@ -342,61 +336,57 @@ class GameScene(Scene):
                 visual_col = MAX_CARDS_PER_ROW - col
                 card = row[col]
                 iso_x, iso_y = self._cart_to_iso(visual_col, row_idx)
-                # Depth: higher iso_y = more in front
-                depth = iso_y
-                soldiers_to_draw.append((depth, iso_x, iso_y, card))
+                soldiers_to_draw.append((iso_y, iso_x, iso_y, card))
 
-        # Sort by depth (draw smaller iso_y first = back)
         soldiers_to_draw.sort(key=lambda s: s[0])
 
-        for depth, iso_x, iso_y, card in soldiers_to_draw:
-            # Get or create persistent figure for this card
+        for _, iso_x, iso_y, card in soldiers_to_draw:
             if card.number not in self.soldier_figures:
                 figure = SoldierFigure(card)
-                figure.start_drop(iso_y)  # Start drop animation
+                figure.start_drop(iso_y)
                 self.soldier_figures[card.number] = figure
             else:
                 figure = self.soldier_figures[card.number]
+            figure.render(screen, iso_x, iso_y, int(ISO_TILE_HEIGHT))
 
-            figure.render(screen, iso_x, iso_y, ISO_TILE_HEIGHT)
+    # ------------------------------------------------------------------
+    # UI drawing
+    # ------------------------------------------------------------------
 
     def _draw_ui(self, screen: pygame.Surface) -> None:
-        """Draw UI elements with new layout"""
+        """Draw UI elements: top bar, AI sidebar, turn log, messages."""
         title_font = get_font(24, "bold")
         font = get_font(18)
         small_font = get_font(14)
         mini_font = get_font(12)
 
-        # === TOP BAR BACKGROUND ===
-        top_bar_height = UI_TOP_BAR_HEIGHT
+        # === TOP BAR ===
         top_bar_surface = pygame.Surface(
-            (SCREEN_WIDTH, top_bar_height), pygame.SRCALPHA
+            (SCREEN_WIDTH, UI_TOP_BAR_HEIGHT), pygame.SRCALPHA
         )
-        top_bar_surface.fill((30, 60, 90, 200))  # Semi-transparent dark blue
+        top_bar_surface.fill(TOP_BAR_BG_COLOR)
         screen.blit(top_bar_surface, (0, 0))
-        # Top bar bottom border
         pygame.draw.line(
             screen,
             AIR_FORCE_BLUE,
-            (0, top_bar_height),
-            (SCREEN_WIDTH, top_bar_height),
+            (0, UI_TOP_BAR_HEIGHT),
+            (SCREEN_WIDTH, UI_TOP_BAR_HEIGHT),
             2,
         )
 
-        # === TOP BAR (Left to Right) ===
         top_y = UI_TOP_BAR_Y
 
-        # 1. Round indicator (left) - with outline for visibility
+        # Round indicator
         draw_outlined_text(
             screen,
             f"ROUND {self.rules.round_state.round_number}",
             title_font,
             (20, top_y),
             WHITE,
-            (10, 30, 50),
+            TOP_BAR_OUTLINE_COLOR,
         )
 
-        # 2. Hangar icon + penalty cards count (next to round)
+        # Hangar icon + penalty cards count
         hangar_x = ICON_HANGER_X
         hangar_points = [
             (hangar_x, top_y + 25),
@@ -417,20 +407,18 @@ class GameScene(Scene):
             AIR_FORCE_BLUE,
         )
 
-        # 3. Player order display (below round/hangar)
+        # Player order display
         order_y = top_y + 35
         draw_outlined_text(
-            screen, "순서:", mini_font, (20, order_y), WHITE, (10, 30, 50)
+            screen, "순서:", mini_font, (20, order_y), WHITE, TOP_BAR_OUTLINE_COLOR
         )
 
         order_x = UI_ELEMENT_PLAYER_ORDER_X
         for i, player in enumerate(self.rules.player_order):
-            if player == self.human_player:
-                name = "나"
-                color = DANGER_SAFE
-            else:
-                name = player.name.replace("AI ", "")
-                color = LIGHT_BLUE
+            name = (
+                "나" if player == self.human_player else player.name.replace("AI ", "")
+            )
+            color = DANGER_SAFE if player == self.human_player else LIGHT_BLUE
 
             is_current = (
                 self.current_placement
@@ -453,7 +441,7 @@ class GameScene(Scene):
                 mini_font,
                 (order_x, order_y),
                 WHITE if is_current else color,
-                (10, 30, 50),
+                TOP_BAR_OUTLINE_COLOR,
             )
 
             if i < len(self.rules.player_order) - 1:
@@ -463,11 +451,11 @@ class GameScene(Scene):
                     mini_font,
                     (order_x + 14, order_y),
                     LIGHT_BLUE,
-                    (10, 30, 50),
+                    TOP_BAR_OUTLINE_COLOR,
                 )
             order_x += 28
 
-        # 4. Danger gauge (center-right)
+        # Danger gauge (center-right)
         committed = self.rules.get_player_committed_score(self.human_player)
         gauge_x = SCREEN_WIDTH // 2 + 50
 
@@ -480,8 +468,7 @@ class GameScene(Scene):
                 (gauge_x + 12, top_y + 25),
             ],
         )
-        warning_text = small_font.render("!", True, WHITE)
-        screen.blit(warning_text, (gauge_x - 3, top_y + 8))
+        screen.blit(small_font.render("!", True, WHITE), (gauge_x - 3, top_y + 8))
 
         draw_outlined_text(
             screen,
@@ -489,37 +476,36 @@ class GameScene(Scene):
             font,
             (gauge_x + 20, top_y + 5),
             WHITE,
-            (10, 30, 50),
+            TOP_BAR_OUTLINE_COLOR,
         )
 
         bar_x = gauge_x + 80
-        bar_width = UI_ELEMENT_DANGER_GAUGE_WIDTH
-        bar_height = UI_ELEMENT_DANGER_GAUGE_HEIGHT
+        bar_w = UI_ELEMENT_DANGER_GAUGE_WIDTH
+        bar_h = UI_ELEMENT_DANGER_GAUGE_HEIGHT
         fill_ratio = min(committed / GAME_OVER_SCORE, 1.0)
 
         pygame.draw.rect(
-            screen,
-            (200, 200, 200),
-            (bar_x, top_y + 8, bar_width, bar_height),
-            border_radius=3,
+            screen, (200, 200, 200), (bar_x, top_y + 8, bar_w, bar_h), border_radius=3
         )
         if fill_ratio > 0:
-            fill_color = get_danger_color(committed)
             pygame.draw.rect(
                 screen,
-                fill_color,
-                (bar_x, top_y + 8, int(bar_width * fill_ratio), bar_height),
+                get_danger_color(committed),
+                (bar_x, top_y + 8, int(bar_w * fill_ratio), bar_h),
                 border_radius=3,
             )
         pygame.draw.rect(
             screen,
             AIR_FORCE_BLUE,
-            (bar_x, top_y + 8, bar_width, bar_height),
+            (bar_x, top_y + 8, bar_w, bar_h),
             width=1,
             border_radius=3,
         )
 
-        # === AI PLAYERS (Right sidebar, below top bar) ===
+        # Player icon (far right)
+        self._draw_player_icon_ui(screen, top_y)
+
+        # === AI PLAYERS (Right sidebar) ===
         for i, player in enumerate(self.players[1:]):
             ai_rect = pygame.Rect(SCREEN_WIDTH - 100, 90 + i * 60, 85, 55)
             bg_color = DANGER_DANGER if player.is_eliminated else LIGHT_BLUE
@@ -527,25 +513,30 @@ class GameScene(Scene):
             pygame.draw.rect(screen, AIR_FORCE_BLUE, ai_rect, width=2, border_radius=6)
 
             order_pos = self.rules.get_player_order_position(player)
-            ai_name = small_font.render(f"{order_pos}.{player.name}", True, WHITE)
-            screen.blit(ai_name, (ai_rect.x + 5, ai_rect.y + 5))
+            screen.blit(
+                small_font.render(f"{order_pos}.{player.name}", True, WHITE),
+                (ai_rect.x + 5, ai_rect.y + 5),
+            )
 
             ai_committed = self.rules.get_player_committed_score(player)
-            ai_score = mini_font.render(f"위험: {ai_committed}", True, WHITE)
-            screen.blit(ai_score, (ai_rect.x + 5, ai_rect.y + 23))
+            screen.blit(
+                mini_font.render(f"위험: {ai_committed}", True, WHITE),
+                (ai_rect.x + 5, ai_rect.y + 23),
+            )
 
             ai_cards = self.rules.get_player_round_penalty_count(player)
-            ai_cards_text = mini_font.render(f"벌칙: {ai_cards}장", True, WHITE)
-            screen.blit(ai_cards_text, (ai_rect.x + 5, ai_rect.y + 38))
+            screen.blit(
+                mini_font.render(f"벌칙: {ai_cards}장", True, WHITE),
+                (ai_rect.x + 5, ai_rect.y + 38),
+            )
 
-        # Turn log (bottom right with container)
+        # Turn log
         if self.turn_log:
             log_x = TURN_LOG_X
             log_y = TURN_LOG_Y
             log_width = TURN_LOG_WIDTH
             log_height = 20 + min(len(self.turn_log), 4) * 18
 
-            # Container background
             log_container = pygame.Surface((log_width, log_height), pygame.SRCALPHA)
             log_container.fill((30, 60, 90, 180))
             screen.blit(log_container, (log_x, log_y))
@@ -557,7 +548,6 @@ class GameScene(Scene):
                 border_radius=4,
             )
 
-            # Title
             draw_outlined_text(
                 screen,
                 "이번 턴:",
@@ -567,7 +557,7 @@ class GameScene(Scene):
                 AIR_FORCE_BLUE,
             )
 
-            for i, result in enumerate(self.turn_log[-4:]):  # Show last 4
+            for i, result in enumerate(self.turn_log[-4:]):
                 entry_text = f"{result.placement_order}. {result.player.name[:4]} → #{result.card.number}"
                 draw_outlined_text(
                     screen,
@@ -595,15 +585,21 @@ class GameScene(Scene):
         )
         screen.blit(phase_text, (SCREEN_WIDTH - 120, SCREEN_HEIGHT - 20))
 
-    def _get_commander_message(self) -> str:
-        """Get commander message based on player's danger score"""
-        # committed = self.rules.get_player_committed_score(self.human_player)
+    def _draw_player_icon_ui(self, screen: pygame.Surface, top_y: int) -> None:
+        """Draw player icon and currency in top bar (far right)."""
+        icon_x = SCREEN_WIDTH - 50
+        icon_y = top_y + 20
+        icon_radius = 18
 
-        # TODO: Add commander messages
-        return ""
+        pygame.draw.circle(screen, (80, 100, 130), (icon_x, icon_y), icon_radius)
+        pygame.draw.circle(screen, AIR_FORCE_BLUE, (icon_x, icon_y), icon_radius, 2)
+
+        icon_font = get_font(18)
+        icon_text = icon_font.render("👤", True, WHITE)
+        screen.blit(icon_text, icon_text.get_rect(center=(icon_x, icon_y)))
 
     def _get_phase_text(self) -> str:
-        """Get current phase description"""
+        """Get current phase description in Korean."""
         phase_texts = {
             GamePhase.STARTING: "라운드 시작",
             GamePhase.SELECTING: "카드 선택",
@@ -617,13 +613,16 @@ class GameScene(Scene):
         }
         return phase_texts.get(self.phase, "")
 
+    # ------------------------------------------------------------------
+    # Hand drawing
+    # ------------------------------------------------------------------
+
     def _draw_hand(self, screen: pygame.Surface) -> None:
-        """Draw player's hand cards in a fan layout at the bottom"""
+        """Draw player's hand cards in a fan layout at the bottom."""
         hand = self.human_player.hand
         if not hand:
             return
 
-        # During dealing, track which cards have arrived
         arrived_cards = set()
         if self.phase == GamePhase.DEALING:
             for card, tween in self.dealing_cards:
@@ -632,24 +631,17 @@ class GameScene(Scene):
 
         card_width = BattalionCard.CARD_WIDTH
         card_height = BattalionCard.CARD_HEIGHT
-
-        # Fan layout parameters (from config)
         num_cards = len(hand)
-        fan_spread = HAND_FAN_SPREAD
-        card_overlap = HAND_CARD_OVERLAP
 
-        # Calculate total width with overlap
-        total_width = card_width + (num_cards - 1) * (card_width - card_overlap)
+        total_width = card_width + (num_cards - 1) * (card_width - HAND_CARD_OVERLAP)
         start_x = SCREEN_WIDTH // 2 - total_width // 2
         base_y = SCREEN_HEIGHT - card_height + HAND_Y_OFFSET
 
-        # First pass: determine which card is hovered (for z-order)
+        # Determine hovered card (check from right to left)
         mouse_pos = pygame.mouse.get_pos()
         hovered_index = None
-
-        # Check from right to left (rightmost cards are on top visually)
         for i in range(num_cards - 1, -1, -1):
-            x = start_x + i * (card_width - card_overlap)
+            x = start_x + i * (card_width - HAND_CARD_OVERLAP)
             card_rect = pygame.Rect(
                 x,
                 base_y - HAND_HOVER_POP_DISTANCE,
@@ -660,7 +652,7 @@ class GameScene(Scene):
                 hovered_index = i
                 break
 
-        # Draw cards in order (hovered card last for z-order)
+        # Draw cards (hovered card last for z-order)
         draw_order = list(range(num_cards))
         if hovered_index is not None:
             draw_order.remove(hovered_index)
@@ -669,21 +661,17 @@ class GameScene(Scene):
         for i in draw_order:
             card = hand[i]
 
-            # During dealing, skip cards that haven't arrived yet
             if self.phase == GamePhase.DEALING and card not in arrived_cards:
                 continue
-
             if self.dragging and i == self.selected_card_index:
                 continue
 
-            # Calculate position with overlap
-            x = start_x + i * (card_width - card_overlap)
+            x = start_x + i * (card_width - HAND_CARD_OVERLAP)
 
-            # Calculate rotation for fan effect
             center_index = (num_cards - 1) / 2
             offset_from_center = i - center_index
             rotation = (
-                (offset_from_center / max(1, num_cards - 1)) * fan_spread
+                (offset_from_center / max(1, num_cards - 1)) * HAND_FAN_SPREAD
                 if num_cards > 1
                 else 0
             )
@@ -691,16 +679,14 @@ class GameScene(Scene):
             is_hovered = i == hovered_index
             is_selected = i == self.selected_card_index
 
-            # Hover effect: pop up and scale (from config)
             if is_hovered or is_selected:
                 draw_y = base_y - HAND_HOVER_POP_DISTANCE
                 scale = HAND_HOVER_SCALE
-                rotation = 0  # No rotation when hovered
+                rotation = 0
             else:
                 draw_y = base_y
                 scale = 1.0
 
-            # Render using BattalionCard entity with rotation and scale
             BattalionCard.render(
                 screen,
                 card,
@@ -713,8 +699,12 @@ class GameScene(Scene):
                 scale=scale,
             )
 
+    # ------------------------------------------------------------------
+    # Event handling
+    # ------------------------------------------------------------------
+
     def handle_event(self, event: pygame.event.Event) -> None:
-        """Handle pygame events"""
+        """Handle pygame events."""
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
                 from fall_in.core.game_manager import GameManager
@@ -738,24 +728,21 @@ class GameScene(Scene):
                     self.dragging = False
 
     def _handle_card_click(self, pos: tuple[int, int]) -> None:
-        """Handle clicking on a card in hand (fan layout)"""
+        """Handle clicking on a card in hand (fan layout)."""
         hand = self.human_player.hand
         if not hand:
             return
 
-        # Use same layout parameters as _draw_hand (from config)
         card_width = BattalionCard.CARD_WIDTH
         card_height = BattalionCard.CARD_HEIGHT
         num_cards = len(hand)
-        card_overlap = HAND_CARD_OVERLAP
 
-        total_width = card_width + (num_cards - 1) * (card_width - card_overlap)
+        total_width = card_width + (num_cards - 1) * (card_width - HAND_CARD_OVERLAP)
         start_x = SCREEN_WIDTH // 2 - total_width // 2
         base_y = SCREEN_HEIGHT - card_height + HAND_Y_OFFSET
 
-        # Check from right to left (rightmost cards are visually on top)
         for i in range(num_cards - 1, -1, -1):
-            x = start_x + i * (card_width - card_overlap)
+            x = start_x + i * (card_width - HAND_CARD_OVERLAP)
             card_rect = pygame.Rect(
                 x,
                 base_y - HAND_HOVER_POP_DISTANCE,
@@ -770,52 +757,45 @@ class GameScene(Scene):
                     self.selected_card_index = i
                 break
 
+    # ------------------------------------------------------------------
+    # Card selection / AI / placement
+    # ------------------------------------------------------------------
+
     def _confirm_card_selection(self) -> None:
-        """Confirm card selection and proceed to AI phase"""
+        """Confirm card selection and proceed to AI phase."""
         if self.selected_card_index is None:
             return
 
         card = self.human_player.hand[self.selected_card_index]
         self.human_player.select_card(card)
-
-        # Reset selected card index to prevent adjacent card from being highlighted
         self.selected_card_index = None
 
         self.phase = GamePhase.AI_THINKING
-        self.phase_timer = 0.5
+        self.phase_timer = AI_THINKING_DURATION
         self.message = "AI가 카드를 선택 중..."
-        self.message_timer = 0.5
+        self.message_timer = AI_THINKING_DURATION
 
     def _ai_select_cards(self) -> None:
-        """Have all AI players select cards"""
+        """Have all AI players select cards."""
         for ai in self.ai_controllers:
             if not ai.player.is_eliminated:
                 ai.select_card(self.rules.board)
 
-        # Get play order without executing - we'll execute one at a time
         play_order = self.rules.prepare_turn()
-
-        # Convert to queue of (player, card, order_idx)
         self.placement_queue = [
             (player, card, idx + 1) for idx, (player, card) in enumerate(play_order)
         ]
         self.turn_log.clear()
-
-        # Start sequential placement
         self._start_next_placement()
 
     def _start_next_placement(self) -> None:
-        """Execute and animate the next player's card placement"""
+        """Execute and animate the next player's card placement."""
         if not self.placement_queue:
-            # All placements done
             self.rules.check_round_end()
             self._finish_turn()
             return
 
-        # Get next placement
         player, card, order_idx = self.placement_queue.pop(0)
-
-        # Execute this single placement (updates board immediately)
         result = self.rules.execute_single_placement(player, card, order_idx)
         self.turn_log.append(result)
         self.current_placement = result
@@ -823,40 +803,30 @@ class GameScene(Scene):
         self.message = f"{result.player.name}: #{result.card.number}"
         self.message_timer = 1.0
 
-        # Check if this placement resulted in penalty
         if result.result.penalty_score > 0:
             self.phase = GamePhase.PENALTY_ANIMATION
             self._start_penalty_animation(result)
         else:
             self.phase = GamePhase.PLACING_PLAYER
-            self.phase_timer = 0.5  # Brief pause to show placement
+            self.phase_timer = PLACEMENT_PAUSE_DURATION
 
     def _start_penalty_animation(self, result: TurnResult) -> None:
-        """Start animation of penalty cards going to hangar or player"""
+        """Start animation of penalty cards moving to hangar or player."""
         self.penalty_cards_animating.clear()
         self.penalty_tweens = TweenGroup()
 
-        # Penalty cards were taken from a row
         taken_cards = result.result.penalty_cards
 
         if result.player == self.human_player:
-            # Animate to hangar icon (left side, x=150)
             target_x, target_y = 180, 40
         else:
-            # Animate to AI player box (right side)
             player_idx = self.players.index(result.player) - 1
             target_x = SCREEN_WIDTH - 60
             target_y = 90 + player_idx * 60
 
-        # Create tweens for each penalty card
         for i, card in enumerate(taken_cards):
-            # Start position (approximate board center)
-            start_x = BOARD_OFFSET_X
-            start_y = BOARD_OFFSET_Y + 50
-
-            # Stagger the animation
             tween = Tween(
-                start=(start_x, start_y),
+                start=(BOARD_OFFSET_X, BOARD_OFFSET_Y + 50),
                 end=(target_x, target_y),
                 duration=0.4 + i * 0.1,
                 easing="ease_in",
@@ -864,37 +834,28 @@ class GameScene(Scene):
             self.penalty_cards_animating.append((card, tween))
             self.penalty_tweens.add(tween)
 
-        # Commander speaks when penalties happen
         if taken_cards:
             self.commander.say_penalty_taken()
 
     def _finish_turn(self) -> None:
-        """Finish the turn after all placements are animated"""
+        """Finish the turn after all placements are animated."""
         has_penalties = any(r.result.penalty_score > 0 for r in self.turn_log)
-
-        if has_penalties:
-            self.message = "배치 및 벌점 부여 완료!"
-        else:
-            self.message = "카드 배치 완료!"
+        self.message = "배치 및 벌점 부여 완료!" if has_penalties else "카드 배치 완료!"
         self.message_timer = 1.0
 
-        # Check for round end
         if self.rules.is_round_over():
             self.phase = GamePhase.ROUND_END
             self.phase_timer = 1.0
             self.message = "라운드 종료! 잠시 후 정산..."
         else:
             self.selected_card_index = None
-            self.turn_timer = TURN_TIMEOUT_SECONDS  # Reset timer for next turn
+            self.turn_timer = TURN_TIMEOUT_SECONDS
             self.phase = GamePhase.SELECTING
 
     def _auto_select_card(self) -> None:
-        """Auto-select a card when timer runs out"""
+        """Auto-select a random card when timer runs out."""
         hand = self.human_player.hand
         if hand:
-            # Select random card when timeout
-            import random
-
             card = random.choice(hand)
             self.human_player.select_card(card)
             self.message = "시간 초과! 자동 선택됨"
@@ -903,24 +864,24 @@ class GameScene(Scene):
             self.phase_timer = 0.3
 
     def _go_to_result_scene(self) -> None:
-        """Navigate to ResultScene for round settlement"""
+        """Navigate to ResultScene for round settlement."""
         from fall_in.core.game_manager import GameManager
         from fall_in.scenes.result_scene import ResultScene
 
-        result_scene = ResultScene(self.rules, self.players)
-        GameManager().change_scene(result_scene)
+        GameManager().change_scene(ResultScene(self.rules, self.players))
+
+    # ------------------------------------------------------------------
+    # Update / Render
+    # ------------------------------------------------------------------
 
     def update(self, dt: float) -> None:
-        """Update scene state"""
-        # Update timers
+        """Update scene state."""
         if self.message_timer > 0:
             self.message_timer -= dt
 
-        # Update screen shake
+        # Screen shake
         if self.screen_shake_timer > 0:
             self.screen_shake_timer -= dt
-            import random
-
             intensity = self.screen_shake_intensity
             self.screen_shake_offset = (
                 random.randint(-intensity, intensity),
@@ -929,55 +890,51 @@ class GameScene(Scene):
             if self.screen_shake_timer <= 0:
                 self.screen_shake_offset = (0, 0)
 
-        # Update dust particles
+        # Dust particles
         self.dust_effect.update(dt)
 
         # Update soldier figures and trigger effects
         board = self.rules.board
         for row_idx in range(NUM_ROWS):
-            row = board.rows[row_idx]
-            for col in range(len(row)):
-                card = row[col]
+            for col in range(len(board.rows[row_idx])):
+                card = board.rows[row_idx][col]
                 if card.number in self.soldier_figures:
                     figure = self.soldier_figures[card.number]
                     spawn_dust, trigger_shake = figure.update(dt)
 
                     if spawn_dust or trigger_shake:
-                        # Get figure position for effects
                         visual_col = MAX_CARDS_PER_ROW - col
                         iso_x, iso_y = self._cart_to_iso(visual_col, row_idx)
 
                         if spawn_dust:
-                            dust_count = figure.get_dust_count()
-                            self.dust_effect.spawn(iso_x, iso_y, dust_count)
-
+                            self.dust_effect.spawn(
+                                iso_x, iso_y, figure.get_dust_count()
+                            )
                         if trigger_shake:
                             self.screen_shake_intensity = figure.get_shake_intensity()
                             self.screen_shake_timer = SCREEN_SHAKE_DURATION
 
-        # Update dealing animation
+        # Dealing animation
         if self.phase == GamePhase.DEALING:
             self._update_dealing_animation(dt)
-            # Also update commander during dealing phase
             self.commander.update(dt)
             return
 
-        # Update turn timer during selection phase
+        # Turn timer during selection
         if self.phase == GamePhase.SELECTING:
             self.turn_timer -= dt
             if self.turn_timer <= 0:
                 self._auto_select_card()
                 return
 
-        # Update commander (expression based on danger)
+        # Commander expression
         committed = self.rules.get_player_committed_score(self.human_player)
         self.commander.set_expression_from_danger(committed)
         self.commander.update(dt)
 
-        # Update penalty animations
+        # Penalty animations
         if self.phase == GamePhase.PENALTY_ANIMATION:
             if self.penalty_tweens.update(dt):
-                # Animation complete, move to next placement
                 self.penalty_cards_animating.clear()
                 self._start_next_placement()
             return
@@ -995,44 +952,36 @@ class GameScene(Scene):
             self._go_to_result_scene()
 
     def render(self, screen: pygame.Surface) -> None:
-        """Render scene to screen"""
-        # Get screen shake offset
+        """Render scene to screen."""
         shake_x, shake_y = self.screen_shake_offset
 
-        # Draw background first (with shake) - offset by padding to center
-        bg_x = shake_x - self.shake_padding
-        bg_y = shake_y - self.shake_padding
-        screen.blit(self.background_image, (bg_x, bg_y))
+        # Background (with shake + padding offset)
+        screen.blit(
+            self.background_image,
+            (shake_x - SCREEN_SHAKE_PADDING, shake_y - SCREEN_SHAKE_PADDING),
+        )
 
-        # Draw board first (background layer) - shake is applied in board drawing
         self._draw_board(screen)
-
-        # Draw dust particles (over board, under UI)
         self.dust_effect.render(screen, self.screen_shake_offset)
-
-        # Draw commander on top of board (speech bubble visible)
         self.commander.render(screen)
-
         self._draw_ui(screen)
         self._draw_hand(screen)
 
-        # Draw dealing card animations
+        # Dealing animation
         if self.phase == GamePhase.DEALING:
             self._draw_dealing_animation(screen)
-            font = get_font(18)
-            hint = font.render("카드 배급 중...", True, AIR_FORCE_BLUE)
+            hint = get_font(18).render("카드 배급 중...", True, AIR_FORCE_BLUE)
             screen.blit(
                 hint, (SCREEN_WIDTH // 2 - hint.get_width() // 2, SCREEN_HEIGHT - 50)
             )
 
-        # Draw penalty card animations
+        # Penalty card animations
         self._draw_penalty_animation(screen)
 
-        # Timer display during selection
+        # Timer & hint during selection
         if self.phase == GamePhase.SELECTING:
             self._draw_turn_timer(screen)
-            font = get_font(14)
-            hint = font.render(
+            hint = get_font(14).render(
                 "카드를 클릭하여 선택, 다시 클릭 또는 [SPACE]로 확정",
                 True,
                 AIR_FORCE_BLUE,
@@ -1042,51 +991,38 @@ class GameScene(Scene):
             )
 
     def _draw_turn_timer(self, screen: pygame.Surface) -> None:
-        """Draw the 30 second turn timer"""
+        """Draw the turn timer with color-coded urgency."""
         timer_font = get_font(28, "bold")
         seconds = max(0, int(self.turn_timer))
 
-        # Color changes as time runs out
-        if seconds > 15:
-            color = WHITE  # Changed from AIR_FORCE_BLUE for better visibility
-        elif seconds > 5:
+        if seconds > TIMER_WARNING_THRESHOLD:
+            color = WHITE
+        elif seconds > TIMER_DANGER_THRESHOLD:
             color = DANGER_WARNING
         else:
             color = DANGER_DANGER
 
-        # Use outlined text for better readability
         draw_outlined_text(
-            screen, f"{seconds}s", timer_font, (230, 20), color, (10, 30, 50)
+            screen, f"{seconds}s", timer_font, (230, 20), color, TOP_BAR_OUTLINE_COLOR
         )
 
     def _draw_dealing_animation(self, screen: pygame.Surface) -> None:
-        """Draw cards flying from barracks to hand positions"""
+        """Draw cards flying from barracks to hand positions."""
         for card, tween in self.dealing_cards:
-            if not tween.is_started:
-                continue  # Wait for delay
-
-            if tween.is_complete:
-                continue  # Already arrived
+            if not tween.is_started or tween.is_complete:
+                continue
 
             pos = tween.get_current_int()
-
-            # Draw flying card
-            card_width = 50
-            card_height = 70
+            card_w, card_h = 50, 70
             card_rect = pygame.Rect(
-                pos[0] - card_width // 2,
-                pos[1] - card_height // 2,
-                card_width,
-                card_height,
-            )
+                pos[0] - card_w // 2, pos[1] - card_h // 2, card_w, card_h
+            )  # type: ignore
 
-            # Card back
             pygame.draw.rect(screen, DEALING_CARD_COLOR, card_rect, border_radius=5)
             pygame.draw.rect(
                 screen, DEALING_CARD_BORDER_COLOR, card_rect, width=2, border_radius=5
             )
 
-            # Card number
             num_font = get_font(14, "bold")
             num_text = num_font.render(f"#{card.number}", True, AIR_FORCE_BLUE)
             screen.blit(
@@ -1098,7 +1034,7 @@ class GameScene(Scene):
             )
 
     def _draw_penalty_animation(self, screen: pygame.Surface) -> None:
-        """Draw cards being sucked into hangar/player"""
+        """Draw penalty cards shrinking and moving toward hangar/player."""
         for card, tween in self.penalty_cards_animating:
             if tween.is_complete:
                 continue
@@ -1106,21 +1042,15 @@ class GameScene(Scene):
             pos = tween.get_current_int()
             progress = tween.get_progress()
 
-            # Card shrinks as it moves
             scale = 1.0 - progress * 0.7
-            card_width = int(40 * scale)
-            card_height = int(55 * scale)
+            card_w = int(40 * scale)
+            card_h = int(55 * scale)
 
-            if card_width > 5 and card_height > 5:
-                # Draw small card representation
+            if card_w > 5 and card_h > 5:
                 card_rect = pygame.Rect(
-                    pos[0] - card_width // 2,
-                    pos[1] - card_height // 2,
-                    card_width,
-                    card_height,
-                )
+                    pos[0] - card_w // 2, pos[1] - card_h // 2, card_w, card_h
+                )  # type: ignore
 
-                # Card color based on danger
                 if card.danger <= 2:
                     color = DANGER_SAFE
                 elif card.danger <= 4:
@@ -1133,9 +1063,7 @@ class GameScene(Scene):
                     screen, AIR_FORCE_BLUE, card_rect, width=1, border_radius=3
                 )
 
-                # Card number
                 if scale > 0.5:
                     num_font = get_font(int(12 * scale))
                     num_text = num_font.render(str(card.number), True, WHITE)
-                    num_rect = num_text.get_rect(center=card_rect.center)
-                    screen.blit(num_text, num_rect)
+                    screen.blit(num_text, num_text.get_rect(center=card_rect.center))

@@ -1,5 +1,3 @@
-# 헤쳐 모여! (Fall In!)
-
 <p align="center">
     <img align="top" width="20%" src="assets/images/fall_in_logo.png" alt="Fall In!"/>
 </p>
@@ -64,11 +62,13 @@
 ## 설치 및 실행
 
 ### 의존성 설치
+
 ```bash
 uv sync
 ```
 
 ### 게임 실행
+
 ```bash
 uv run fall-in
 ```
@@ -84,10 +84,14 @@ uv run python -m fall_in.main
 ```
 fall_in/
 ├── src/fall_in/          # 게임 소스 코드
+│   ├── config.py         # 게임 설정
+│   ├── main.py           # 게임 진입점
 │   ├── core/             # 핵심 게임 로직
 │   ├── scenes/           # 게임 씬 (Title, Game, Result 등)
 │   ├── ui/               # UI 컴포넌트
 │   ├── ai/               # AI 플레이어 로직
+│   ├── data/             # 게임 데이터 로더 로직
+│   ├── entities/         # 게임 엔티티
 │   └── utils/            # 유틸리티 함수
 ├── assets/               # 게임 리소스 (이미지, 사운드, 폰트)
 ├── data/                 # 게임 데이터 (병사, 대사)

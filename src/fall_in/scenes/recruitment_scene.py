@@ -17,6 +17,7 @@ from fall_in.config import (
     SCREEN_HEIGHT,
     WHITE,
     AIR_FORCE_BLUE,
+    DANGER_LEVEL_COLORS,
     RECRUIT_BTN_ROSTER_X,
     RECRUIT_BTN_ROSTER_Y,
     RECRUIT_BTN_INTERVIEW_X,
@@ -44,6 +45,10 @@ from fall_in.config import (
     RECRUIT_ROSTER_ICON_SIZE,
     RECRUIT_ROSTER_ICON_GAP,
     RECRUIT_ROSTER_SCROLL_SPEED,
+    RECRUIT_PANEL_BG,
+    RECRUIT_PANEL_BORDER,
+    RECRUIT_BTN_COLOR,
+    RECRUIT_BTN_HOVER_COLOR,
     INTERVIEW_COST,
 )
 
@@ -65,14 +70,14 @@ class RecruitmentScene(Scene):
     Soldier recruitment scene with interview flow and roster view.
     """
 
-    # Button colors
-    BTN_COLOR = (70, 90, 110)
-    BTN_HOVER_COLOR = (90, 110, 130)
+    # Button colors (from config)
+    BTN_COLOR = RECRUIT_BTN_COLOR
+    BTN_HOVER_COLOR = RECRUIT_BTN_HOVER_COLOR
     BTN_TEXT_COLOR = WHITE
 
-    # Panel colors
-    PANEL_BG = (245, 240, 230)  # Beige paper
-    PANEL_BORDER = (100, 80, 60)  # Dark brown
+    # Panel colors (from config)
+    PANEL_BG = RECRUIT_PANEL_BG
+    PANEL_BORDER = RECRUIT_PANEL_BORDER
 
     def __init__(self):
         super().__init__()
@@ -594,14 +599,9 @@ class RecruitmentScene(Scene):
 
         # Danger level
         y_offset = notes_rect.bottom - 50
-        danger_colors = {
-            1: (100, 180, 100),
-            2: (180, 180, 100),
-            3: (200, 150, 80),
-            5: (200, 100, 100),
-            7: (150, 50, 150),
-        }
-        danger_color = danger_colors.get(self.current_soldier.danger, (100, 100, 100))
+        danger_color = DANGER_LEVEL_COLORS.get(
+            self.current_soldier.danger, (100, 100, 100)
+        )
         text = small_font.render(
             f"위험도: {self.current_soldier.danger}", True, danger_color
         )
@@ -766,14 +766,7 @@ class RecruitmentScene(Scene):
             screen.blit(text, text_rect)
 
         # Number circle (top-left)
-        danger_colors = {
-            1: (100, 180, 100),
-            2: (180, 180, 100),
-            3: (200, 150, 80),
-            5: (200, 100, 100),
-            7: (150, 50, 150),
-        }
-        circle_color = danger_colors.get(danger, (100, 100, 100))
+        circle_color = DANGER_LEVEL_COLORS.get(danger, (100, 100, 100))
         circle_center = (x + 15, y + 15)
         pygame.draw.circle(screen, circle_color, circle_center, 12)
         pygame.draw.circle(screen, WHITE, circle_center, 12, width=1)
@@ -860,14 +853,7 @@ class RecruitmentScene(Scene):
 
         # Danger
         y_offset += 20
-        danger_colors = {
-            1: (100, 180, 100),
-            2: (180, 180, 100),
-            3: (200, 150, 80),
-            5: (200, 100, 100),
-            7: (150, 50, 150),
-        }
-        danger_color = danger_colors.get(soldier.danger, (100, 100, 100))
+        danger_color = DANGER_LEVEL_COLORS.get(soldier.danger, (100, 100, 100))
         text = font.render(f"위험도: {soldier.danger}", True, danger_color)
         screen.blit(text, (info_x, y_offset))
 

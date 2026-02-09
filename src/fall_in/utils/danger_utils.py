@@ -1,5 +1,8 @@
 """
-Danger utility functions - Common danger level related functions
+Danger utility functions - Shared danger level logic for colors, tiles, and labels.
+
+Provides a single source of truth for danger-related color mappings and
+score-to-level conversions used across the entire game.
 """
 
 from enum import Enum
@@ -10,11 +13,13 @@ from fall_in.config import (
     DANGER_WARNING,
     DANGER_DANGER,
     DANGER_CRITICAL,
+    DANGER_LEVEL_COLORS,
+    DANGER_SCORE_THRESHOLDS,
 )
 
 
 class TileType(Enum):
-    """Tile types for board rendering"""
+    """Tile visual types for board rendering."""
 
     EMPTY = "empty"
     SAFE = "safe"
@@ -23,7 +28,7 @@ class TileType(Enum):
 
 
 class DangerLevel(Enum):
-    """Danger level names"""
+    """Named danger levels for cumulative score display."""
 
     SAFE = "안전"
     CAUTION = "주의"
@@ -37,18 +42,18 @@ def get_danger_color(score: int) -> tuple[int, int, int]:
     Get color based on cumulative danger score.
 
     Args:
-        score: Cumulative danger score (0-66+)
+        score: Cumulative danger score (0-66+).
 
     Returns:
-        RGB color tuple
+        RGB color tuple.
     """
-    if score < 20:
+    if score < DANGER_SCORE_THRESHOLDS["caution"]:
         return DANGER_SAFE
-    elif score < 35:
+    elif score < DANGER_SCORE_THRESHOLDS["warning"]:
         return DANGER_CAUTION
-    elif score < 50:
+    elif score < DANGER_SCORE_THRESHOLDS["danger"]:
         return DANGER_WARNING
-    elif score < 60:
+    elif score < DANGER_SCORE_THRESHOLDS["critical"]:
         return DANGER_DANGER
     else:
         return DANGER_CRITICAL
@@ -59,32 +64,56 @@ def get_danger_level(score: int) -> DangerLevel:
     Get danger level enum based on cumulative score.
 
     Args:
-        score: Cumulative danger score
+        score: Cumulative danger score.
 
     Returns:
-        DangerLevel enum value
+        DangerLevel enum value.
     """
-    if score < 20:
+    if score < DANGER_SCORE_THRESHOLDS["caution"]:
         return DangerLevel.SAFE
-    elif score < 35:
+    elif score < DANGER_SCORE_THRESHOLDS["warning"]:
         return DangerLevel.CAUTION
-    elif score < 50:
+    elif score < DANGER_SCORE_THRESHOLDS["danger"]:
         return DangerLevel.WARNING
-    elif score < 60:
+    elif score < DANGER_SCORE_THRESHOLDS["critical"]:
         return DangerLevel.DANGER
     else:
         return DangerLevel.CRITICAL
 
 
-def get_tile_type_by_danger(danger: int) -> TileType:
+def get_danger_level_name(score: int) -> str:
     """
-    Get tile type based on card danger level.
+    Get Korean danger level name for a cumulative score.
 
     Args:
-        danger: Card danger level (1-7)
+        score: Cumulative danger score.
 
     Returns:
-        TileType enum value
+        Korean danger level string.
+    """
+    if score < DANGER_SCORE_THRESHOLDS["caution"]:
+        return "안전"
+    elif score < DANGER_SCORE_THRESHOLDS["warning"]:
+        return "주의"
+    elif score < DANGER_SCORE_THRESHOLDS["danger"]:
+        return "경고"
+    elif score < DANGER_SCORE_THRESHOLDS["critical"]:
+        return "위험"
+    elif score < DANGER_SCORE_THRESHOLDS["eliminated"]:
+        return "극한"
+    else:
+        return "탈락"
+
+
+def get_tile_type_by_danger(danger: int) -> TileType:
+    """
+    Get tile type based on individual card danger level.
+
+    Args:
+        danger: Card danger level (1-7).
+
+    Returns:
+        TileType enum value.
     """
     if danger <= 2:
         return TileType.SAFE
@@ -98,19 +127,26 @@ def get_danger_circle_color(danger: int) -> tuple[int, int, int]:
     """
     Get circle background color for card number display based on danger level.
 
+    Uses the centralized DANGER_LEVEL_COLORS from config. Falls back to the
+    closest available key for intermediate danger levels (e.g. 4 -> 3, 6 -> 5).
+
     Args:
-        danger: Card danger level (1-7)
+        danger: Card danger level (1-7).
 
     Returns:
-        RGB color tuple
+        RGB color tuple.
     """
-    if danger >= 7:
-        return (100, 50, 150)  # Purple
-    elif danger >= 5:
-        return (200, 50, 50)  # Red
-    elif danger >= 3:
-        return (230, 150, 50)  # Orange
-    elif danger >= 2:
-        return (200, 180, 50)  # Yellow
+    if danger in DANGER_LEVEL_COLORS:
+        return DANGER_LEVEL_COLORS[danger]
+
+    # Fall back to closest available key
+    if danger <= 1:
+        return DANGER_LEVEL_COLORS[1]
+    elif danger <= 2:
+        return DANGER_LEVEL_COLORS[2]
+    elif danger <= 3:
+        return DANGER_LEVEL_COLORS[3]
+    elif danger <= 5:
+        return DANGER_LEVEL_COLORS[5]
     else:
-        return (100, 150, 100)  # Green
+        return DANGER_LEVEL_COLORS[7]

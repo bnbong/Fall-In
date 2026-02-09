@@ -54,8 +54,8 @@ class GameManager:
         self.state = GameState.TITLE
 
         # Player data
-        self.currency = 0  # 수당 (게임 재화)
-        self.collected_soldiers: set[int] = set()  # 수집한 병사 ID
+        self.currency = 0  # In-game currency
+        self.collected_soldiers: set[int] = set()  # Collected soldier IDs
         self.current_difficulty = "normal"
 
         # Audio settings
@@ -84,12 +84,22 @@ class GameManager:
             self.currency = 0
 
     def save_currency(self) -> None:
-        """Save currency to data file"""
+        """Save currency to data file, preserving other fields"""
         try:
             data_path = self._get_data_path()
             data_path.parent.mkdir(parents=True, exist_ok=True)
+
+            # Read existing data to preserve other fields
+            existing_data = {}
+            if data_path.exists():
+                with open(data_path, "r", encoding="utf-8") as f:
+                    existing_data = json.load(f)
+
+            # Update only the currency field
+            existing_data["currency"] = self.currency
+
             with open(data_path, "w", encoding="utf-8") as f:
-                json.dump({"currency": self.currency}, f, ensure_ascii=False, indent=2)
+                json.dump(existing_data, f, ensure_ascii=False, indent=2)
         except Exception:
             pass  # Fail silently
 

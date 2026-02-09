@@ -1,5 +1,7 @@
 """
-Result Scene - Round settlement screen showing penalties and scores
+Result Scene - Round settlement screen showing penalties and scores.
+
+# TODO : add result scene graphics.
 """
 
 import pygame
@@ -8,7 +10,8 @@ from fall_in.scenes.base_scene import Scene
 from fall_in.ui.button import Button
 from fall_in.utils.asset_loader import get_font
 from fall_in.utils.danger_utils import get_danger_color
-from fall_in.core.player import Player
+from fall_in.core.card import Card
+from fall_in.core.player import Player, PlayerType
 from fall_in.core.rules import GameRules
 from fall_in.config import (
     SCREEN_WIDTH,
@@ -18,6 +21,7 @@ from fall_in.config import (
     DANGER_WARNING,
     DANGER_DANGER,
     GAME_OVER_SCORE,
+    DANGER_SCORE_THRESHOLDS,
 )
 
 
@@ -33,7 +37,20 @@ class ResultScene(Scene):
         self.players = players
         self.round_number = rules.round_state.round_number
 
-        # Calculate scores
+        # Track human player's penalty cards for smuggling
+        self.human_player = next(
+            (p for p in players if p.player_type == PlayerType.HUMAN), None
+        )
+
+        # Get penalty cards before committing scores
+        self.human_penalty_cards: list[Card] = []
+        if self.human_player:
+            round_penalties = rules.get_round_penalties()
+            human_penalty = round_penalties.get(self.human_player.player_id)
+            if human_penalty:
+                self.human_penalty_cards = list(human_penalty.cards_taken)
+
+        # Calculate scores (this commits the penalties)
         self.round_results = rules.commit_round_scores()
 
         # Check for eliminations
@@ -46,7 +63,7 @@ class ResultScene(Scene):
         self._setup_buttons()
 
     def _setup_buttons(self) -> None:
-        """Setup continue/title buttons"""
+        """Setup continue/title buttons."""
         button_width = 200
         button_height = 50
         button_x = SCREEN_WIDTH // 2 - button_width // 2
@@ -75,27 +92,78 @@ class ResultScene(Scene):
                 )
             )
 
-    def _continue_game(self) -> None:
-        """Continue to next round"""
-        from fall_in.core.game_manager import GameManager
-        from fall_in.scenes.game_scene import GameScene
+    # ------------------------------------------------------------------
+    # Navigation helpers (shared smuggling check logic)
+    # ------------------------------------------------------------------
 
-        # Create new game scene with same rules
-        game_scene = GameScene(rules=self.rules)
-        GameManager().change_scene(game_scene)
+    def _get_collected_penalty_cards(self) -> list[Card]:
+        """Filter penalty cards to only collected (interviewed) soldiers."""
+        from fall_in.core.smuggling_manager import SmugglingManager
+
+        smuggling = SmugglingManager()
+        smuggling.update_max_count()
+        return [
+            card
+            for card in self.human_penalty_cards
+            if smuggling.is_soldier_collected(card.number)
+        ]
+
+    def _navigate_via_smuggling_or_direct(self, *, is_game_over: bool) -> None:
+        """
+        Navigate to smuggling scene if there are collected penalty cards,
+        otherwise go directly to the next scene.
+
+        Args:
+            is_game_over: If True, the destination after smuggling is GameOverScene.
+        """
+        from fall_in.core.game_manager import GameManager
+
+        collected_penalty_cards = self._get_collected_penalty_cards()
+
+        if collected_penalty_cards:
+            from fall_in.scenes.smuggling_scene import SmugglingScene
+
+            round_penalty = (
+                self.round_results.get(self.human_player.player_id, (0, 0))[0]
+                if self.human_player
+                else 0
+            )
+            smuggling_scene = SmugglingScene(
+                rules=self.rules,
+                penalty_cards=collected_penalty_cards,
+                round_penalty=round_penalty,
+                is_game_over=is_game_over,
+            )
+            GameManager().change_scene(smuggling_scene)
+        elif is_game_over:
+            from fall_in.scenes.game_over_scene import GameOverScene
+
+            GameManager().change_scene(
+                GameOverScene(
+                    winner=self.winner,
+                    players=self.players,
+                    round_number=self.round_number,
+                )
+            )
+        else:
+            from fall_in.scenes.game_scene import GameScene
+
+            GameManager().change_scene(GameScene(rules=self.rules))
+
+    def _continue_game(self) -> None:
+        """Continue to next round (optionally via smuggling)."""
+        self._navigate_via_smuggling_or_direct(is_game_over=False)
 
     def _go_to_game_over(self) -> None:
-        """Go to game over scene"""
-        from fall_in.core.game_manager import GameManager
-        from fall_in.scenes.game_over_scene import GameOverScene
+        """Go to game over scene (optionally via smuggling)."""
+        self._navigate_via_smuggling_or_direct(is_game_over=True)
 
-        game_over_scene = GameOverScene(
-            winner=self.winner, players=self.players, round_number=self.round_number
-        )
-        GameManager().change_scene(game_over_scene)
+    # ------------------------------------------------------------------
+    # Event / Update / Render
+    # ------------------------------------------------------------------
 
     def handle_event(self, event: pygame.event.Event) -> None:
-        """Handle events"""
+        """Handle events."""
         for button in self.buttons:
             button.handle_event(event)
 
@@ -107,12 +175,12 @@ class ResultScene(Scene):
                     self._continue_game()
 
     def update(self, dt: float) -> None:
-        """Update scene"""
+        """Update scene."""
         for button in self.buttons:
             button.update(dt)
 
     def render(self, screen: pygame.Surface) -> None:
-        """Render result screen"""
+        """Render result screen."""
         title_font = get_font(36, "bold")
         header_font = get_font(24, "bold")
         font = get_font(20)
@@ -127,7 +195,7 @@ class ResultScene(Scene):
 
         # Table header
         start_y = 120
-        col_x = [150, 350, 500, 650]  # Name, Round penalty, Total, Status
+        col_x = [150, 350, 500, 650]
 
         headers = ["플레이어", "이번 라운드", "누적 위험도", "상태"]
         for i, header in enumerate(headers):
@@ -151,7 +219,6 @@ class ResultScene(Scene):
             player_id = player.player_id
             round_danger, total = self.round_results.get(player_id, (0, 0))
 
-            # Highlight row if eliminated
             if player.is_eliminated:
                 pygame.draw.rect(
                     screen,
@@ -161,13 +228,16 @@ class ResultScene(Scene):
                 )
 
             # Player name
-            name_text = font.render(player.name, True, AIR_FORCE_BLUE)
-            screen.blit(name_text, (col_x[0], row_y + 10))
+            screen.blit(
+                font.render(player.name, True, AIR_FORCE_BLUE), (col_x[0], row_y + 10)
+            )
 
             # Round penalty
             penalty_color = DANGER_DANGER if round_danger > 0 else DANGER_SAFE
-            penalty_text = font.render(f"+{round_danger}", True, penalty_color)
-            screen.blit(penalty_text, (col_x[1], row_y + 10))
+            screen.blit(
+                font.render(f"+{round_danger}", True, penalty_color),
+                (col_x[1], row_y + 10),
+            )
 
             # Total score with gauge
             gauge_width = 100
@@ -204,7 +274,7 @@ class ResultScene(Scene):
             # Status
             if player.is_eliminated:
                 status_text = font.render("탈락!", True, DANGER_DANGER)
-            elif total >= 50:
+            elif total >= DANGER_SCORE_THRESHOLDS["danger"]:
                 status_text = font.render("위험", True, DANGER_WARNING)
             else:
                 status_text = font.render("생존", True, DANGER_SAFE)
@@ -219,10 +289,8 @@ class ResultScene(Scene):
                 msg = f"{', '.join(p.name for p in self.eliminated_players)} 탈락!"
             else:
                 msg = "게임 종료!"
-
             msg_text = header_font.render(msg, True, DANGER_DANGER)
-            msg_rect = msg_text.get_rect(center=(SCREEN_WIDTH // 2, msg_y))
-            screen.blit(msg_text, msg_rect)
+            screen.blit(msg_text, msg_text.get_rect(center=(SCREEN_WIDTH // 2, msg_y)))
 
         # Buttons
         for button in self.buttons:

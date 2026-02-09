@@ -1,5 +1,5 @@
 """
-Commander - Wing Commander sprite with expressions
+Commander - Wing Commander sprite with danger-based expressions and speech.
 """
 
 import math
@@ -13,11 +13,13 @@ from fall_in.config import (
     COMMANDER_Y,
     COMMANDER_WIDTH,
     COMMANDER_HEIGHT,
+    COMMANDER_SPEECH_BUBBLE_Y,
+    COMMANDER_DANGER_THRESHOLDS,
 )
 
 
 class CommanderExpression:
-    """Expression types for commander"""
+    """Expression types for commander."""
 
     NEUTRAL = "neutral"
     PLEASED = "pleased"
@@ -28,21 +30,13 @@ class CommanderExpression:
 
 class Commander:
     """
-    Wing Commander (비행단장) character with:
+    Wing Commander character with:
     - Danger-based expression changes
     - Speech bubble integration
-    - Sprite sheet rendering (4 quadrants for expressions)
+    - Sprite sheet rendering (2x2 grid for expressions)
     """
 
-    # Position (from config)
-    DEFAULT_X = COMMANDER_X
-    DEFAULT_Y = COMMANDER_Y
-
     # Sprite sheet layout (2x2 grid)
-    # Q1 (top-right) = ANGRY
-    # Q2 (top-left) = CONCERNED
-    # Q3 (bottom-left) = NEUTRAL/PLEASED (default)
-    # Q4 (bottom-right) = FURIOUS
     SPRITE_SHEET_COLS = 2
     SPRITE_SHEET_ROWS = 2
 
@@ -55,20 +49,7 @@ class Commander:
         CommanderExpression.FURIOUS: (1, 1),  # Q4 - bottom-right
     }
 
-    # Display size (from config)
-    DISPLAY_WIDTH = COMMANDER_WIDTH
-    DISPLAY_HEIGHT = COMMANDER_HEIGHT
-
-    # Danger thresholds for expression changes
-    DANGER_THRESHOLDS = {
-        0: CommanderExpression.PLEASED,
-        15: CommanderExpression.NEUTRAL,
-        30: CommanderExpression.CONCERNED,
-        45: CommanderExpression.ANGRY,
-        55: CommanderExpression.FURIOUS,
-    }
-
-    def __init__(self, x: int = DEFAULT_X, y: int = DEFAULT_Y):
+    def __init__(self, x: int = COMMANDER_X, y: int = COMMANDER_Y):
         self.x = x
         self.y = y
         self.expression = CommanderExpression.NEUTRAL
@@ -77,7 +58,6 @@ class Commander:
         loader = AssetLoader()
         self.sprite_sheet = loader.load_image("characters/commander/commander.png")
 
-        # Calculate frame dimensions from sprite sheet
         sheet_width = self.sprite_sheet.get_width()
         sheet_height = self.sprite_sheet.get_height()
         self.frame_width = sheet_width // self.SPRITE_SHEET_COLS
@@ -93,16 +73,15 @@ class Commander:
                 self.frame_height,
             )
             frame_surface = self.sprite_sheet.subsurface(frame_rect).copy()
-            # Scale to display size
             scaled = pygame.transform.smoothscale(
-                frame_surface, (self.DISPLAY_WIDTH, self.DISPLAY_HEIGHT)
+                frame_surface, (COMMANDER_WIDTH, COMMANDER_HEIGHT)
             )
             self.expression_surfaces[expr] = scaled
 
         # Speech bubble (positioned to upper right of commander's head)
         self.speech_bubble = SpeechBubble(
-            x=x + self.DISPLAY_WIDTH // 2,
-            y=365,  # Fixed near top of screen
+            x=x + COMMANDER_WIDTH // 2,
+            y=COMMANDER_SPEECH_BUBBLE_Y,
             max_width=200,
             tail_direction="left",
         )
@@ -112,44 +91,40 @@ class Commander:
         self.idle_offset = 0
 
     def set_expression_from_danger(self, danger_score: int) -> None:
-        """Set expression based on player's danger score"""
+        """Set expression based on player's cumulative danger score."""
         expression = CommanderExpression.PLEASED
 
-        for threshold, expr in self.DANGER_THRESHOLDS.items():
+        for threshold_str, expr_str in COMMANDER_DANGER_THRESHOLDS.items():
+            threshold = (
+                int(threshold_str) if isinstance(threshold_str, str) else threshold_str
+            )
             if danger_score >= threshold:
-                expression = expr
+                expression = expr_str
 
         self.expression = expression
 
     def say(self, text: str, duration: float = 2.5) -> None:
-        """Make commander say something in speech bubble"""
+        """Make commander say something in speech bubble."""
         self.speech_bubble.show(text, duration)
 
     def say_penalty_taken(self) -> None:
-        """Default message when penalties are taken"""
+        """Default message when penalties are taken."""
         self.say("준비된 인원들 각자 위치로.", duration=2.0)
 
     def update(self, dt: float) -> None:
-        """Update commander state"""
+        """Update commander state (idle bobbing + speech bubble)."""
         self.idle_timer += dt
-        # Subtle bobbing animation
         self.idle_offset = int(math.sin(self.idle_timer * 2) * 3)
-
         self.speech_bubble.update(dt)
 
     def render(self, screen: pygame.Surface) -> None:
-        """Render commander sprite and speech bubble"""
-        # Get current expression sprite
+        """Render commander sprite and speech bubble."""
         sprite = self.expression_surfaces.get(
             self.expression, self.expression_surfaces[CommanderExpression.NEUTRAL]
         )
 
-        # Calculate position (centered on x, y with idle offset)
-        draw_x = self.x - self.DISPLAY_WIDTH // 2
-        draw_y = self.y - self.DISPLAY_HEIGHT // 2 + self.idle_offset
+        draw_x = self.x - COMMANDER_WIDTH // 2
+        draw_y = self.y - COMMANDER_HEIGHT // 2 + self.idle_offset
 
-        # Draw sprite
         screen.blit(sprite, (draw_x, draw_y))
-
-        # Draw speech bubble
         self.speech_bubble.render(screen)

@@ -25,12 +25,12 @@ class Card:
     number: int
     danger: int
 
-    # Soldier data (for collected/interviewed soldiers)
+    # Soldier data (populated for collected/interviewed soldiers)
     is_collected: bool = False
     name: Optional[str] = None
-    rank: Optional[str] = None  # 계급 (병장, 상병, 일병, 이병)
-    unit: Optional[str] = None  # 소속 대대
-    note: Optional[str] = None  # 특이 사항
+    rank: Optional[str] = None  # Military rank
+    unit: Optional[str] = None  # Assigned battalion/unit
+    note: Optional[str] = None  # Special notes
 
     def __post_init__(self):
         """Validate card data"""
@@ -61,10 +61,10 @@ def calculate_danger(number: int) -> int:
     Calculate the danger level for a card number based on 6 Nimmt! rules.
 
     Rules:
-    - Normal cards: 1 danger (소 머리 1개)
-    - Cards ending in 5: 2 danger (소 머리 2개)
-    - Cards ending in 0: 3 danger (소 머리 3개)
-    - Double digit cards (11,22,33,...,99): 5 danger (소 머리 5개)
+    - Normal cards: 1 danger
+    - Cards ending in 5: 2 danger
+    - Cards ending in 0: 3 danger
+    - Double digit cards (11,22,33,...,99): 5 danger
     - Card 55: 7 danger (ends in 5 AND double digit = 2+5)
 
     Args:

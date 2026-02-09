@@ -1,3 +1,13 @@
 {
-  "currency": 2000
+  "currency": 2000,
+  "prestige_count": 0,
+  "profile": {
+    "icon": "default",
+    "border": "basic"
+  },
+  "medals": [],
+  "coup_unlocked": false,
+  "max_smuggle_count": 1,
+  "win_count": 0,
+  "max_survived_rounds": 0
 }

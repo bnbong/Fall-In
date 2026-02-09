@@ -1,0 +1,62 @@
+{
+    "medals": [
+        {
+            "id": "first_win",
+            "name": "첫 승리",
+            "description": "게임에서 처음으로 승리",
+            "icon": "medal_first_win.png",
+            "condition": {
+                "type": "win_count",
+                "value": 1
+            }
+        },
+        {
+            "id": "five_wins",
+            "name": "5연승",
+            "description": "게임에서 5회 승리",
+            "icon": "medal_five_wins.png",
+            "condition": {
+                "type": "win_count",
+                "value": 5
+            }
+        },
+        {
+            "id": "collector",
+            "name": "수집가",
+            "description": "모든 병사와 면담 완료",
+            "icon": "medal_collector.png",
+            "condition": {
+                "type": "collect_all"
+            }
+        },
+        {
+            "id": "coup_master",
+            "name": "쿠테타 달성",
+            "description": "쿠테타 엔딩 달성",
+            "icon": "medal_coup.png",
+            "condition": {
+                "type": "coup_ending"
+            }
+        },
+        {
+            "id": "survivor",
+            "name": "생존자",
+            "description": "10라운드 이상 생존",
+            "icon": "medal_survivor.png",
+            "condition": {
+                "type": "survive_rounds",
+                "value": 10
+            }
+        },
+        {
+            "id": "low_danger",
+            "name": "안전 제일",
+            "description": "위험도 20 이하로 게임 승리",
+            "icon": "medal_low_danger.png",
+            "condition": {
+                "type": "win_with_low_danger",
+                "value": 20
+            }
+        }
+    ]
+}
