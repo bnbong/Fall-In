@@ -834,7 +834,7 @@ class GameScene(Scene):
             self.penalty_cards_animating.append((card, tween))
             self.penalty_tweens.add(tween)
 
-        if taken_cards:
+        if taken_cards and result.player == self.human_player:
             self.commander.say_penalty_taken()
 
     def _finish_turn(self) -> None:

@@ -589,16 +589,19 @@ class RecruitmentScene(Scene):
         )
         y_offset += 15
 
-        # Note (multi-line)
+        # Note (multi-line, fill available space above danger label)
         note_lines = self.current_soldier.note.split("\n")
-        for line in note_lines[:4]:  # Max 4 lines
+        line_height = 22
+        danger_label_y = notes_rect.bottom - 50
+        max_note_lines = max(1, (danger_label_y - y_offset) // line_height)
+        for line in note_lines[:max_note_lines]:
             text = small_font.render(line, True, (60, 60, 60))
             text.set_alpha(self.element_alpha)
             ui_surface.blit(text, (notes_rect.left + 15, y_offset))
-            y_offset += 22
+            y_offset += line_height
 
         # Danger level
-        y_offset = notes_rect.bottom - 50
+        y_offset = danger_label_y
         danger_color = DANGER_LEVEL_COLORS.get(
             self.current_soldier.danger, (100, 100, 100)
         )
@@ -844,12 +847,15 @@ class RecruitmentScene(Scene):
         )
         y_offset += 15
 
-        # Note
+        # Note (fill available space above the danger label area)
         note_lines = soldier.note.split("\n")
-        for line in note_lines[:4]:
+        line_height = 24
+        danger_area_y = panel_rect.bottom - 190  # Leave room for danger + card
+        max_note_lines = max(1, (danger_area_y - y_offset) // line_height)
+        for line in note_lines[:max_note_lines]:
             text = small_font.render(line, True, (60, 60, 60))
             screen.blit(text, (info_x, y_offset))
-            y_offset += 24
+            y_offset += line_height
 
         # Danger
         y_offset += 20

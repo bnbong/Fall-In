@@ -31,6 +31,7 @@ class Card:
     rank: Optional[str] = None  # Military rank
     unit: Optional[str] = None  # Assigned battalion/unit
     note: Optional[str] = None  # Special notes
+    body_type: Optional[str] = None  # Body type override (BodyType.NORMAL/SMALL/LARGE)
 
     def __post_init__(self):
         """Validate card data"""
@@ -129,6 +130,7 @@ def create_deck() -> list[Card]:
                     rank=soldier.rank if soldier.is_collected else None,
                     unit=soldier.unit if soldier.is_collected else None,
                     note=soldier.note if soldier.is_collected else None,
+                    body_type=getattr(soldier, "body_type", None),
                 )
             )
         else:

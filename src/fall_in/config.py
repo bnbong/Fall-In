@@ -302,22 +302,68 @@ TURN_LOG_WIDTH = 170
 
 
 # =============================================================================
+# Soldier Figure - Body Type System
+# =============================================================================
+class BodyType:
+    """
+    Soldier body type categories affecting figure display size.
+    Each body type corresponds to different sprite sheet dimensions
+    and on-screen display sizes.
+    """
+
+    NORMAL = "normal"  # Standard body type (default, 960x252 sheets)
+    SMALL = "small"  # Smaller/petite body type (TBD sprite sheets)
+    LARGE = "large"  # Large/bulky body type (1020x252 sheets, e.g. danger 5)
+
+
+# Display dimensions per body type: (width, height) in pixels
+FIGURE_BODY_TYPE_DIMENSIONS = {
+    BodyType.NORMAL: (90, 94),
+    BodyType.SMALL: (75, 78),
+    BodyType.LARGE: (134, 139),
+}
+
+# Y offset per body type for tile anchoring (larger figures need more offset)
+FIGURE_BODY_TYPE_OFFSET_Y = {
+    BodyType.NORMAL: 20,
+    BodyType.SMALL: 16,
+    BodyType.LARGE: 24,
+}
+
+# Shadow radius per body type
+FIGURE_BODY_TYPE_SHADOW_RADIUS = {
+    BodyType.NORMAL: 18,
+    BodyType.SMALL: 14,
+    BodyType.LARGE: 22,
+}
+
+# Default body type for mob sprites by danger level
+FIGURE_DANGER_BODY_TYPE = {
+    1: BodyType.NORMAL,
+    2: BodyType.NORMAL,
+    3: BodyType.NORMAL,
+    5: BodyType.LARGE,
+    7: BodyType.NORMAL,
+}
+
+
+# =============================================================================
 # Soldier Figure Sprite Settings
 # =============================================================================
 FIGURE_SPRITE_FRAMES = 4  # Number of animation frames in sprite sheet
-FIGURE_DISPLAY_WIDTH = 60
-FIGURE_DISPLAY_HEIGHT = 63
+FIGURE_DISPLAY_WIDTH = 80  # Default display width (NORMAL body type)
+FIGURE_DISPLAY_HEIGHT = 84  # Default display height (NORMAL body type)
 FIGURE_DROP_DURATION = 0.3  # Drop animation duration in seconds
 FIGURE_DROP_HEIGHT = 150  # Height from which figure drops
 
 # Figure position offset on tile (fine-tuning)
 FIGURE_OFFSET_X = 0  # Horizontal offset (positive = right)
-FIGURE_OFFSET_Y = 20  # Vertical offset (positive = down)
+FIGURE_OFFSET_Y = 20  # Vertical offset (positive = down, used as fallback)
 
 # Figure rendering
-FIGURE_SHADOW_RADIUS = 14
-FIGURE_SHADOW_VISIBILITY_THRESHOLD = 30
-FIGURE_NUMBER_FONT_SIZE = 12
+FIGURE_SHADOW_RADIUS = 18  # Default shadow radius (NORMAL body type)
+FIGURE_SHADOW_VISIBILITY_THRESHOLD = 40
+FIGURE_NUMBER_FONT_SIZE = 14
 
 # Dust particle count by danger level
 DUST_PARTICLE_COUNT = {

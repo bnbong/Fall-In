@@ -17,7 +17,7 @@ from fall_in.config import DATA_DIR
 
 @dataclass
 class SoldierInfo:
-    """Extended soldier information for recruitment scene"""
+    """Extended soldier information for recruitment scene."""
 
     id: int
     name: str
@@ -30,9 +30,10 @@ class SoldierInfo:
         2  # Number of frozen food items shown during interview (1-5)
     )
     is_collected: bool = False
+    body_type: Optional[str] = None  # Body type override ("normal"/"small"/"large")
 
     def to_card(self) -> Card:
-        """Convert to Card object for game use"""
+        """Convert to Card object for game use."""
         return Card(
             number=self.id,
             danger=self.danger,
@@ -41,6 +42,7 @@ class SoldierInfo:
             rank=self.rank,
             unit=self.unit,
             note=self.note,
+            body_type=self.body_type,
         )
 
 
@@ -80,6 +82,7 @@ class SoldierDataManager:
                         "danger", calculate_danger(soldier_data["id"])
                     ),
                     frozen_food_count=soldier_data.get("frozen_food_count", 2),
+                    body_type=soldier_data.get("body_type", None),
                 )
                 self.soldiers[soldier.id] = soldier
         except FileNotFoundError:
