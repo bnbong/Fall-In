@@ -34,6 +34,7 @@ from fall_in.config import (
     FIGURE_SHADOW_VISIBILITY_THRESHOLD,
     FIGURE_NUMBER_FONT_SIZE,
     FIGURE_BODY_TYPE_DIMENSIONS,
+    FIGURE_BODY_TYPE_OFFSET_X,
     FIGURE_BODY_TYPE_OFFSET_Y,
     FIGURE_BODY_TYPE_SHADOW_RADIUS,
     FIGURE_DANGER_BODY_TYPE,
@@ -66,6 +67,11 @@ def _get_display_dimensions(body_type: str) -> tuple[int, int]:
 def _get_shadow_radius(body_type: str) -> int:
     """Get shadow ellipse radius for a body type."""
     return FIGURE_BODY_TYPE_SHADOW_RADIUS.get(body_type, FIGURE_SHADOW_RADIUS)
+
+
+def _get_offset_x(body_type: str) -> int:
+    """Get horizontal tile offset for a body type."""
+    return FIGURE_BODY_TYPE_OFFSET_X.get(body_type, FIGURE_OFFSET_X)
 
 
 def _get_offset_y(body_type: str) -> int:
@@ -266,6 +272,7 @@ class SoldierFigure:
             self.body_type
         )
         self.shadow_radius = _get_shadow_radius(self.body_type)
+        self.offset_x = _get_offset_x(self.body_type)
         self.offset_y = _get_offset_y(self.body_type)
 
         # Animation state
@@ -355,7 +362,7 @@ class SoldierFigure:
         sprite = self.get_sprite_for_card(
             self.card, self.animation_frame, self.body_type
         )
-        adjusted_iso_x = iso_x + FIGURE_OFFSET_X
+        adjusted_iso_x = iso_x + self.offset_x
 
         if sprite:
             if drop_offset < FIGURE_SHADOW_VISIBILITY_THRESHOLD:

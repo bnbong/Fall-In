@@ -294,7 +294,7 @@ class BattalionCard:
         # Build card surface
         if card.is_collected:
             base_src = cls._card_base_hr if use_hr else cls._card_base
-            card_surface = pygame.transform.smoothscale(base_src, (target_w, target_h))
+            card_surface = pygame.transform.smoothscale(base_src, (target_w, target_h))  # type: ignore
             cls._draw_portrait_on_surface(
                 card_surface, card, target_w, target_h, use_hr
             )
@@ -303,7 +303,7 @@ class BattalionCard:
             )
         else:
             back_src = cls._card_back_hr if use_hr else cls._card_back
-            card_surface = pygame.transform.smoothscale(back_src, (target_w, target_h))
+            card_surface = pygame.transform.smoothscale(back_src, (target_w, target_h))  # type: ignore
 
         # Draw number circle (always visible)
         cls._draw_number_circle_on_surface(

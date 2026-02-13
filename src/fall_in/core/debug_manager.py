@@ -45,7 +45,7 @@ class DebugManager:
         from fall_in.config import DATA_DIR
 
         path = DATA_DIR / "collected_soldiers.json"
-        data = {"collected_ids": []}
+        data: dict[str, list[int]] = {"collected_ids": []}
 
         with open(path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
@@ -169,7 +169,7 @@ class DebugManager:
         print(f"[DEBUG] Coup Condition Met: {smuggling.check_coup_condition()}")
 
     @classmethod
-    def get_debug_options(cls) -> list[tuple[str, callable]]:
+    def get_debug_options(cls) -> list[tuple[str, callable]]:  # type: ignore
         """Get list of debug menu options."""
         return [
             ("모든 병사 수집", cls.unlock_all_soldiers),

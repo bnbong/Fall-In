@@ -323,11 +323,18 @@ FIGURE_BODY_TYPE_DIMENSIONS = {
     BodyType.LARGE: (134, 139),
 }
 
-# Y offset per body type for tile anchoring (larger figures need more offset)
+# X offset per body type (positive = right, negative = left)
+FIGURE_BODY_TYPE_OFFSET_X = {
+    BodyType.NORMAL: 0,
+    BodyType.SMALL: 0,
+    BodyType.LARGE: -8,
+}
+
+# Y offset per body type for tile anchoring (larger values push down)
 FIGURE_BODY_TYPE_OFFSET_Y = {
     BodyType.NORMAL: 20,
     BodyType.SMALL: 16,
-    BodyType.LARGE: 24,
+    BodyType.LARGE: 28,
 }
 
 # Shadow radius per body type

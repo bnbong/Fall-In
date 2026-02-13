@@ -149,7 +149,7 @@ class GameManager:
     def run(self) -> None:
         """Main game loop"""
         while self.running:
-            dt = self.clock.tick(FPS) / 1000.0  # Delta time in seconds
+            dt = self.clock.tick(FPS) / 1000.0  # type: ignore # Delta time in seconds 
 
             # Event handling
             for event in pygame.event.get():
@@ -163,9 +163,9 @@ class GameManager:
                 self.current_scene.update(dt)
 
             # Render
-            self.screen.fill(SAND_BEIGE)
+            self.screen.fill(SAND_BEIGE)  # type: ignore
             if self.current_scene:
-                self.current_scene.render(self.screen)
+                self.current_scene.render(self.screen)  # type: ignore
 
             pygame.display.flip()
 

@@ -92,7 +92,7 @@ class FrozenFood:
                 scaled = pygame.transform.smoothscale(
                     image, (FROZEN_FOOD_SIZE, FROZEN_FOOD_SIZE)
                 )
-                cls._assets[food["name"]] = scaled
+                cls._assets[food["name"]] = scaled  # type: ignore
             except Exception:
                 pass  # Asset not found, will use fallback rendering
 

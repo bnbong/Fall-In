@@ -1015,8 +1015,8 @@ class GameScene(Scene):
             pos = tween.get_current_int()
             card_w, card_h = 50, 70
             card_rect = pygame.Rect(
-                pos[0] - card_w // 2, pos[1] - card_h // 2, card_w, card_h
-            )  # type: ignore
+                pos[0] - card_w // 2, pos[1] - card_h // 2, card_w, card_h  # type: ignore
+            )
 
             pygame.draw.rect(screen, DEALING_CARD_COLOR, card_rect, border_radius=5)
             pygame.draw.rect(
@@ -1048,8 +1048,8 @@ class GameScene(Scene):
 
             if card_w > 5 and card_h > 5:
                 card_rect = pygame.Rect(
-                    pos[0] - card_w // 2, pos[1] - card_h // 2, card_w, card_h
-                )  # type: ignore
+                    pos[0] - card_w // 2, pos[1] - card_h // 2, card_w, card_h  # type: ignore
+                )
 
                 if card.danger <= 2:
                     color = DANGER_SAFE
