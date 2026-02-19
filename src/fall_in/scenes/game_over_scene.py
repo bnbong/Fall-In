@@ -70,6 +70,13 @@ class GameOverScene(Scene):
         self.buttons: list[Button] = []
         self._setup_buttons()
 
+        # UI images — pull from pre-loaded manifest cache
+        from fall_in.utils.asset_manifest import AssetManifest
+
+        self._ui_images: dict[str, pygame.Surface] = {}
+        for category in ("banners", "panels", "icons"):
+            self._ui_images.update(AssetManifest.get_loaded(category))
+
     def _check_coup_ending(self) -> bool:
         """
         Check if coup ending condition is met.
@@ -202,12 +209,28 @@ class GameOverScene(Scene):
         if self.is_coup_ending:
             title = "🔥 쿠테타 성공! 🔥"
             title_color = COUP_TITLE_COLOR
+            banner_key = "banner_coup"
         elif self.is_victory:
             title = "승리!"
             title_color = DANGER_SAFE
+            banner_key = "banner_victory"
         else:
             title = "패배..."
             title_color = DANGER_DANGER
+            banner_key = "banner_defeat"
+
+        # Draw banner behind title
+        if banner_key in self._ui_images:
+            banner_img = self._ui_images[banner_key]
+            banner_w = min(600, SCREEN_WIDTH - 100)
+            aspect = banner_img.get_height() / banner_img.get_width()
+            banner_h = int(banner_w * aspect)
+            scaled_banner = pygame.transform.smoothscale(
+                banner_img, (banner_w, banner_h)
+            )
+            screen.blit(
+                scaled_banner, (SCREEN_WIDTH // 2 - banner_w // 2, 100 - banner_h // 2)
+            )
 
         title_text = title_font.render(title, True, title_color)
         screen.blit(title_text, title_text.get_rect(center=(SCREEN_WIDTH // 2, 100)))
@@ -223,8 +246,17 @@ class GameOverScene(Scene):
 
         # Stats box
         stats_rect = pygame.Rect(SCREEN_WIDTH // 2 - 200, 220, 400, 200)
-        pygame.draw.rect(screen, WHITE, stats_rect, border_radius=10)
-        pygame.draw.rect(screen, AIR_FORCE_BLUE, stats_rect, width=2, border_radius=10)
+        if "panel_stats_box" in self._ui_images:
+            stats_img = pygame.transform.smoothscale(
+                self._ui_images["panel_stats_box"],
+                (stats_rect.width, stats_rect.height),
+            )
+            screen.blit(stats_img, stats_rect.topleft)
+        else:
+            pygame.draw.rect(screen, WHITE, stats_rect, border_radius=10)
+            pygame.draw.rect(
+                screen, AIR_FORCE_BLUE, stats_rect, width=2, border_radius=10
+            )
 
         stats_y = stats_rect.y + 20
         screen.blit(

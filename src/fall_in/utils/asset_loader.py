@@ -166,6 +166,47 @@ class AssetLoader:
 
         return self._sounds[path]
 
+    # ------------------------------------------------------------------
+    # Pre-loading (called once at startup)
+    # ------------------------------------------------------------------
+
+    def preload_all(
+        self,
+        progress_callback: "Optional[callable]" = None,
+    ) -> int:
+        """
+        Pre-load every image registered in the asset manifest.
+
+        Args:
+            progress_callback: Optional ``fn(current: int, total: int)``
+                called after each image is loaded.
+
+        Returns:
+            Number of images successfully loaded.
+        """
+        from fall_in.utils.asset_manifest import AssetManifest
+
+        paths = AssetManifest.get_all_paths()
+        total = len(paths)
+        loaded = 0
+
+        for i, path in enumerate(paths):
+            try:
+                self.load_image(path)
+                loaded += 1
+            except Exception:
+                pass
+
+            if progress_callback is not None:
+                progress_callback(i + 1, total)
+
+        return loaded
+
+    @property
+    def preloaded_count(self) -> int:
+        """Number of images currently in the cache."""
+        return len(self._images)
+
     def clear_cache(self) -> None:
         """Clear all cached assets"""
         self._fonts.clear()

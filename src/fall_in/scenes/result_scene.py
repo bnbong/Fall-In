@@ -62,6 +62,11 @@ class ResultScene(Scene):
         self.buttons: list[Button] = []
         self._setup_buttons()
 
+        # UI images — pull from pre-loaded manifest cache
+        from fall_in.utils.asset_manifest import AssetManifest
+
+        self._ui_images: dict[str, pygame.Surface] = AssetManifest.get_loaded("panels")
+
     def _setup_buttons(self) -> None:
         """Setup continue/title buttons."""
         button_width = 200

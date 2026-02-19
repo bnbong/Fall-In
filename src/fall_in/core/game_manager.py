@@ -133,6 +133,15 @@ class GameManager:
         self.clock = pygame.time.Clock()
         self.running = True
 
+        # Pre-load all assets registered in the manifest
+        from fall_in.utils.asset_loader import AssetLoader
+
+        loader = AssetLoader()
+        loaded = loader.preload_all()
+        print(
+            f"[AssetLoader] Pre-loaded {loaded} assets ({loader.preloaded_count} cached)"
+        )
+
         # Start with title scene
         from fall_in.scenes.title_scene import TitleScene
 
@@ -149,7 +158,7 @@ class GameManager:
     def run(self) -> None:
         """Main game loop"""
         while self.running:
-            dt = self.clock.tick(FPS) / 1000.0  # type: ignore # Delta time in seconds 
+            dt = self.clock.tick(FPS) / 1000.0  # type: ignore # Delta time in seconds
 
             # Event handling
             for event in pygame.event.get():

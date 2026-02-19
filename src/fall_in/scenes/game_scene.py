@@ -191,6 +191,11 @@ class GameScene(Scene):
                 self.tile_images[key], (int(ISO_TILE_WIDTH), int(ISO_TILE_HEIGHT))
             )
 
+        # HUD images — pull from pre-loaded manifest cache
+        from fall_in.utils.asset_manifest import AssetManifest
+
+        self._hud_images: dict[str, pygame.Surface] = AssetManifest.get_loaded("hud")
+
         # Start round
         self._start_new_round()
 
@@ -354,61 +359,91 @@ class GameScene(Scene):
     # ------------------------------------------------------------------
 
     def _draw_ui(self, screen: pygame.Surface) -> None:
-        """Draw UI elements: top bar, AI sidebar, turn log, messages."""
+        """Draw UI elements: top bar, player sidebar, turn log, messages."""
         title_font = get_font(24, "bold")
         font = get_font(18)
         small_font = get_font(14)
         mini_font = get_font(12)
 
         # === TOP BAR ===
-        top_bar_surface = pygame.Surface(
-            (SCREEN_WIDTH, UI_TOP_BAR_HEIGHT), pygame.SRCALPHA
-        )
-        top_bar_surface.fill(TOP_BAR_BG_COLOR)
-        screen.blit(top_bar_surface, (0, 0))
-        pygame.draw.line(
-            screen,
-            AIR_FORCE_BLUE,
-            (0, UI_TOP_BAR_HEIGHT),
-            (SCREEN_WIDTH, UI_TOP_BAR_HEIGHT),
-            2,
-        )
+        if "top_bar" in self._hud_images:
+            top_bar_img = pygame.transform.smoothscale(
+                self._hud_images["top_bar"], (SCREEN_WIDTH, UI_TOP_BAR_HEIGHT)
+            )
+            screen.blit(top_bar_img, (0, 0))
+        else:
+            top_bar_surface = pygame.Surface(
+                (SCREEN_WIDTH, UI_TOP_BAR_HEIGHT), pygame.SRCALPHA
+            )
+            top_bar_surface.fill(TOP_BAR_BG_COLOR)
+            screen.blit(top_bar_surface, (0, 0))
+            pygame.draw.line(
+                screen,
+                AIR_FORCE_BLUE,
+                (0, UI_TOP_BAR_HEIGHT),
+                (SCREEN_WIDTH, UI_TOP_BAR_HEIGHT),
+                2,
+            )
 
         top_y = UI_TOP_BAR_Y
 
-        # Round indicator
-        draw_outlined_text(
-            screen,
-            f"ROUND {self.rules.round_state.round_number}",
-            title_font,
-            (20, top_y),
-            WHITE,
-            TOP_BAR_OUTLINE_COLOR,
-        )
+        # Round indicator badge
+        if "round_indicator" in self._hud_images:
+            badge_w, badge_h = 160, 50
+            badge_img = pygame.transform.smoothscale(
+                self._hud_images["round_indicator"], (badge_w, badge_h)
+            )
+            badge_x = 10
+            badge_y = (UI_TOP_BAR_HEIGHT - badge_h) // 2
+            screen.blit(badge_img, (badge_x, badge_y))
+            # Draw round number centered on the badge
+            round_num_font = get_font(20, "bold")
+            round_text = round_num_font.render(
+                f"ROUND {self.rules.round_state.round_number}", True, WHITE
+            )
+            round_rect = round_text.get_rect(
+                center=(badge_x + badge_w // 2, badge_y + badge_h // 2)
+            )
+            screen.blit(round_text, round_rect)
+        else:
+            draw_outlined_text(
+                screen,
+                f"ROUND {self.rules.round_state.round_number}",
+                title_font,
+                (20, top_y),
+                WHITE,
+                TOP_BAR_OUTLINE_COLOR,
+            )
 
         # Hangar icon + penalty cards count
         hangar_x = ICON_HANGER_X
-        hangar_points = [
-            (hangar_x, top_y + 25),
-            (hangar_x + 15, top_y + 5),
-            (hangar_x + 45, top_y + 5),
-            (hangar_x + 60, top_y + 25),
-        ]
-        pygame.draw.polygon(screen, LIGHT_BLUE, hangar_points)
-        pygame.draw.polygon(screen, WHITE, hangar_points, width=2)
+        if "hangar_icon" in self._hud_images:
+            hangar_img = pygame.transform.smoothscale(
+                self._hud_images["hangar_icon"], (60, 24)
+            )
+            screen.blit(hangar_img, (hangar_x, top_y))
+        else:
+            hangar_points = [
+                (hangar_x, top_y + 25),
+                (hangar_x + 15, top_y + 5),
+                (hangar_x + 45, top_y + 5),
+                (hangar_x + 60, top_y + 25),
+            ]
+            pygame.draw.polygon(screen, LIGHT_BLUE, hangar_points)
+            pygame.draw.polygon(screen, WHITE, hangar_points, width=2)
 
         cards_taken = self.rules.get_player_round_penalty_count(self.human_player)
         draw_outlined_text(
             screen,
             str(cards_taken),
             font,
-            (hangar_x + 22, top_y + 30),
+            (hangar_x + 22, top_y + 25),
             WHITE,
             AIR_FORCE_BLUE,
         )
 
         # Player order display
-        order_y = top_y + 35
+        order_y = top_y + 55
         draw_outlined_text(
             screen, "순서:", mini_font, (20, order_y), WHITE, TOP_BAR_OUTLINE_COLOR
         )
@@ -459,16 +494,23 @@ class GameScene(Scene):
         committed = self.rules.get_player_committed_score(self.human_player)
         gauge_x = SCREEN_WIDTH // 2 + 50
 
-        pygame.draw.polygon(
-            screen,
-            DANGER_DANGER,
-            [
-                (gauge_x, top_y + 5),
-                (gauge_x - 12, top_y + 25),
-                (gauge_x + 12, top_y + 25),
-            ],
-        )
-        screen.blit(small_font.render("!", True, WHITE), (gauge_x - 3, top_y + 8))
+        # Danger warning icon
+        if "danger_warning" in self._hud_images:
+            warn_img = pygame.transform.smoothscale(
+                self._hud_images["danger_warning"], (26, 22)
+            )
+            screen.blit(warn_img, (gauge_x - 13, top_y + 4))
+        else:
+            pygame.draw.polygon(
+                screen,
+                DANGER_DANGER,
+                [
+                    (gauge_x, top_y + 5),
+                    (gauge_x - 12, top_y + 25),
+                    (gauge_x + 12, top_y + 25),
+                ],
+            )
+            screen.blit(small_font.render("!", True, WHITE), (gauge_x - 3, top_y + 8))
 
         draw_outlined_text(
             screen,
@@ -484,50 +526,139 @@ class GameScene(Scene):
         bar_h = UI_ELEMENT_DANGER_GAUGE_HEIGHT
         fill_ratio = min(committed / GAME_OVER_SCORE, 1.0)
 
-        pygame.draw.rect(
-            screen, (200, 200, 200), (bar_x, top_y + 8, bar_w, bar_h), border_radius=3
-        )
-        if fill_ratio > 0:
+        # Gauge background image
+        if "gauge_bg" in self._hud_images:
+            gauge_bg_img = pygame.transform.smoothscale(
+                self._hud_images["gauge_bg"], (bar_w, bar_h)
+            )
+            screen.blit(gauge_bg_img, (bar_x, top_y + 8))
+        else:
             pygame.draw.rect(
                 screen,
-                get_danger_color(committed),
-                (bar_x, top_y + 8, int(bar_w * fill_ratio), bar_h),
+                (200, 200, 200),
+                (bar_x, top_y + 8, bar_w, bar_h),
                 border_radius=3,
             )
-        pygame.draw.rect(
-            screen,
-            AIR_FORCE_BLUE,
-            (bar_x, top_y + 8, bar_w, bar_h),
-            width=1,
-            border_radius=3,
-        )
+
+        # Gauge fill overlay
+        if fill_ratio > 0:
+            fill_key = self._get_gauge_fill_key(committed)
+            if fill_key in self._hud_images:
+                fill_w = int(bar_w * fill_ratio)
+                fill_img = pygame.transform.smoothscale(
+                    self._hud_images[fill_key], (fill_w, bar_h)
+                )
+                screen.blit(fill_img, (bar_x, top_y + 8))
+            else:
+                pygame.draw.rect(
+                    screen,
+                    get_danger_color(committed),
+                    (bar_x, top_y + 8, int(bar_w * fill_ratio), bar_h),
+                    border_radius=3,
+                )
+
+        if "gauge_bg" not in self._hud_images:
+            pygame.draw.rect(
+                screen,
+                AIR_FORCE_BLUE,
+                (bar_x, top_y + 8, bar_w, bar_h),
+                width=1,
+                border_radius=3,
+            )
 
         # Player icon (far right)
         self._draw_player_icon_ui(screen, top_y)
 
-        # === AI PLAYERS (Right sidebar) ===
-        for i, player in enumerate(self.players[1:]):
-            ai_rect = pygame.Rect(SCREEN_WIDTH - 100, 90 + i * 60, 85, 55)
-            bg_color = DANGER_DANGER if player.is_eliminated else LIGHT_BLUE
-            pygame.draw.rect(screen, bg_color, ai_rect, border_radius=6)
-            pygame.draw.rect(screen, AIR_FORCE_BLUE, ai_rect, width=2, border_radius=6)
+        # === OTHER PLAYERS (Right sidebar, center-right aligned) ===
+        other_players = self.players[1:]
+        panel_w, panel_h = 200, 70
+        panel_spacing = 10
+        total_panels_height = (
+            len(other_players) * panel_h + (len(other_players) - 1) * panel_spacing
+        )
+        # Vertically center panels in the playfield area (below top bar, above hand)
+        panel_area_top = UI_TOP_BAR_HEIGHT + 10
+        panel_area_bottom = SCREEN_HEIGHT - 220  # above hand cards area
+        panel_start_y = (
+            panel_area_top
+            + (panel_area_bottom - panel_area_top - total_panels_height) // 2
+        )
+        panel_x = SCREEN_WIDTH - panel_w - 10
 
+        for i, player in enumerate(other_players):
+            p_rect = pygame.Rect(
+                panel_x, panel_start_y + i * (panel_h + panel_spacing), panel_w, panel_h
+            )
+
+            # Panel background
+            if "player_panel" in self._hud_images:
+                panel_img = pygame.transform.smoothscale(
+                    self._hud_images["player_panel"], (p_rect.width, p_rect.height)
+                )
+                if player.is_eliminated:
+                    tint = pygame.Surface(panel_img.get_size(), pygame.SRCALPHA)
+                    tint.fill((180, 40, 40, 100))
+                    panel_img = panel_img.copy()
+                    panel_img.blit(tint, (0, 0))
+                screen.blit(panel_img, p_rect.topleft)
+            else:
+                bg_color = DANGER_DANGER if player.is_eliminated else LIGHT_BLUE
+                pygame.draw.rect(screen, bg_color, p_rect, border_radius=6)
+                pygame.draw.rect(
+                    screen, AIR_FORCE_BLUE, p_rect, width=2, border_radius=6
+                )
+
+            # Profile picture (circular, left side of panel)
+            avatar_radius = 25
+            avatar_cx = p_rect.x + 8 + avatar_radius
+            avatar_cy = p_rect.y + p_rect.height // 2
+            if "player_avatar" in self._hud_images:
+                avatar_size = avatar_radius * 2
+                avatar_img = pygame.transform.smoothscale(
+                    self._hud_images["player_avatar"], (avatar_size, avatar_size)
+                )
+                # Circular mask
+                mask = pygame.Surface((avatar_size, avatar_size), pygame.SRCALPHA)
+                pygame.draw.circle(
+                    mask,
+                    (255, 255, 255, 255),
+                    (avatar_radius, avatar_radius),
+                    avatar_radius,
+                )
+                avatar_img.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
+                screen.blit(
+                    avatar_img, (avatar_cx - avatar_radius, avatar_cy - avatar_radius)
+                )
+            else:
+                pygame.draw.circle(
+                    screen, (80, 100, 130), (avatar_cx, avatar_cy), avatar_radius
+                )
+                pygame.draw.circle(
+                    screen, WHITE, (avatar_cx, avatar_cy), avatar_radius, 2
+                )
+                avatar_icon = mini_font.render("👤", True, WHITE)
+                screen.blit(
+                    avatar_icon, avatar_icon.get_rect(center=(avatar_cx, avatar_cy))
+                )
+
+            # Text info (right of avatar)
+            text_x = avatar_cx + avatar_radius + 6
             order_pos = self.rules.get_player_order_position(player)
             screen.blit(
                 small_font.render(f"{order_pos}.{player.name}", True, WHITE),
-                (ai_rect.x + 5, ai_rect.y + 5),
+                (text_x, p_rect.y + 8),
             )
 
-            ai_committed = self.rules.get_player_committed_score(player)
+            p_committed = self.rules.get_player_committed_score(player)
             screen.blit(
-                mini_font.render(f"위험: {ai_committed}", True, WHITE),
-                (ai_rect.x + 5, ai_rect.y + 23),
+                mini_font.render(f"위험: {p_committed}", True, WHITE),
+                (text_x, p_rect.y + 28),
             )
 
-            ai_cards = self.rules.get_player_round_penalty_count(player)
+            p_cards = self.rules.get_player_round_penalty_count(player)
             screen.blit(
-                mini_font.render(f"벌칙: {ai_cards}장", True, WHITE),
-                (ai_rect.x + 5, ai_rect.y + 38),
+                mini_font.render(f"벌칙: {p_cards}장", True, WHITE),
+                (text_x, p_rect.y + 45),
             )
 
         # Turn log
@@ -537,16 +668,22 @@ class GameScene(Scene):
             log_width = TURN_LOG_WIDTH
             log_height = 20 + min(len(self.turn_log), 4) * 18
 
-            log_container = pygame.Surface((log_width, log_height), pygame.SRCALPHA)
-            log_container.fill((30, 60, 90, 180))
-            screen.blit(log_container, (log_x, log_y))
-            pygame.draw.rect(
-                screen,
-                AIR_FORCE_BLUE,
-                (log_x, log_y, log_width, log_height),
-                width=2,
-                border_radius=4,
-            )
+            if "turn_log" in self._hud_images:
+                log_bg = pygame.transform.smoothscale(
+                    self._hud_images["turn_log"], (log_width, log_height)
+                )
+                screen.blit(log_bg, (log_x, log_y))
+            else:
+                log_container = pygame.Surface((log_width, log_height), pygame.SRCALPHA)
+                log_container.fill((30, 60, 90, 180))
+                screen.blit(log_container, (log_x, log_y))
+                pygame.draw.rect(
+                    screen,
+                    AIR_FORCE_BLUE,
+                    (log_x, log_y, log_width, log_height),
+                    width=2,
+                    border_radius=4,
+                )
 
             draw_outlined_text(
                 screen,
@@ -585,18 +722,40 @@ class GameScene(Scene):
         )
         screen.blit(phase_text, (SCREEN_WIDTH - 120, SCREEN_HEIGHT - 20))
 
+    def _get_gauge_fill_key(self, committed: int) -> str:
+        """Map committed score to the correct gauge fill image key."""
+        from fall_in.config import GAME_OVER_SCORE
+
+        ratio = committed / GAME_OVER_SCORE
+        if ratio >= 0.8:
+            return "gauge_critical"
+        elif ratio >= 0.6:
+            return "gauge_danger"
+        elif ratio >= 0.4:
+            return "gauge_warning"
+        elif ratio >= 0.2:
+            return "gauge_extra"
+        return "gauge_safe"
+
     def _draw_player_icon_ui(self, screen: pygame.Surface, top_y: int) -> None:
         """Draw player icon and currency in top bar (far right)."""
-        icon_x = SCREEN_WIDTH - 50
+        icon_x = SCREEN_WIDTH - 170
         icon_y = top_y + 20
-        icon_radius = 18
+        icon_radius = 28
 
-        pygame.draw.circle(screen, (80, 100, 130), (icon_x, icon_y), icon_radius)
-        pygame.draw.circle(screen, AIR_FORCE_BLUE, (icon_x, icon_y), icon_radius, 2)
+        if "player_avatar" in self._hud_images:
+            avatar_size = icon_radius * 2
+            avatar_img = pygame.transform.smoothscale(
+                self._hud_images["player_avatar"], (avatar_size, avatar_size)
+            )
+            screen.blit(avatar_img, (icon_x - icon_radius, icon_y - icon_radius))
+        else:
+            pygame.draw.circle(screen, (80, 100, 130), (icon_x, icon_y), icon_radius)
+            pygame.draw.circle(screen, AIR_FORCE_BLUE, (icon_x, icon_y), icon_radius, 2)
 
-        icon_font = get_font(18)
-        icon_text = icon_font.render("👤", True, WHITE)
-        screen.blit(icon_text, icon_text.get_rect(center=(icon_x, icon_y)))
+            icon_font = get_font(18)
+            icon_text = icon_font.render("👤", True, WHITE)
+            screen.blit(icon_text, icon_text.get_rect(center=(icon_x, icon_y)))
 
     def _get_phase_text(self) -> str:
         """Get current phase description in Korean."""
@@ -821,8 +980,21 @@ class GameScene(Scene):
             target_x, target_y = 180, 40
         else:
             player_idx = self.players.index(result.player) - 1
-            target_x = SCREEN_WIDTH - 60
-            target_y = 90 + player_idx * 60
+            # Match the OTHER PLAYERS panel layout
+            panel_w, panel_h = 200, 70
+            panel_spacing = 10
+            other_count = len(self.players) - 1
+            total_h = other_count * panel_h + (other_count - 1) * panel_spacing
+            panel_area_top = UI_TOP_BAR_HEIGHT + 10
+            panel_area_bottom = SCREEN_HEIGHT - 220
+            panel_start_y = (
+                panel_area_top + (panel_area_bottom - panel_area_top - total_h) // 2
+            )
+            panel_x = SCREEN_WIDTH - panel_w - 10
+            target_x = panel_x + panel_w // 2
+            target_y = (
+                panel_start_y + player_idx * (panel_h + panel_spacing) + panel_h // 2
+            )
 
         for i, card in enumerate(taken_cards):
             tween = Tween(
@@ -1003,7 +1175,7 @@ class GameScene(Scene):
             color = DANGER_DANGER
 
         draw_outlined_text(
-            screen, f"{seconds}s", timer_font, (230, 20), color, TOP_BAR_OUTLINE_COLOR
+            screen, f"{seconds}s", timer_font, (280, 20), color, TOP_BAR_OUTLINE_COLOR
         )
 
     def _draw_dealing_animation(self, screen: pygame.Surface) -> None:
@@ -1015,7 +1187,10 @@ class GameScene(Scene):
             pos = tween.get_current_int()
             card_w, card_h = 50, 70
             card_rect = pygame.Rect(
-                pos[0] - card_w // 2, pos[1] - card_h // 2, card_w, card_h  # type: ignore
+                pos[0] - card_w // 2,
+                pos[1] - card_h // 2,
+                card_w,
+                card_h,  # type: ignore
             )
 
             pygame.draw.rect(screen, DEALING_CARD_COLOR, card_rect, border_radius=5)
@@ -1048,7 +1223,10 @@ class GameScene(Scene):
 
             if card_w > 5 and card_h > 5:
                 card_rect = pygame.Rect(
-                    pos[0] - card_w // 2, pos[1] - card_h // 2, card_w, card_h  # type: ignore
+                    pos[0] - card_w // 2,
+                    pos[1] - card_h // 2,
+                    card_w,
+                    card_h,  # type: ignore
                 )
 
                 if card.danger <= 2:

@@ -87,7 +87,7 @@ class FrozenFood:
         loader = AssetLoader()
         for food in cls.FOOD_TYPES:
             try:
-                asset_path = f"ui/frozen_food_{food['name']}.png"
+                asset_path = f"ui/food/frozen_food_{food['name']}.png"
                 image = loader.load_image(asset_path)
                 scaled = pygame.transform.smoothscale(
                     image, (FROZEN_FOOD_SIZE, FROZEN_FOOD_SIZE)

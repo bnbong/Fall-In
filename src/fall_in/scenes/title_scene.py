@@ -41,6 +41,13 @@ class TitleScene(Scene):
         # Load developer profile image
         self.dev_profile_image = self._load_dev_profile_image()
 
+        # UI images — pull from pre-loaded manifest cache
+        from fall_in.utils.asset_manifest import AssetManifest
+
+        self._ui_images: dict[str, pygame.Surface] = {}
+        for category in ("panels", "icons"):
+            self._ui_images.update(AssetManifest.get_loaded(category))
+
         self._setup_ui()
 
     def _setup_ui(self) -> None:
@@ -337,8 +344,15 @@ class TitleScene(Scene):
         popup_rect = pygame.Rect(popup_x, popup_y, popup_width, popup_height)
 
         # Draw popup background
-        pygame.draw.rect(screen, (255, 255, 255), popup_rect, border_radius=12)
-        pygame.draw.rect(screen, AIR_FORCE_BLUE, popup_rect, 3, border_radius=12)
+        if "popup_dev_info" in self._ui_images:
+            popup_bg = pygame.transform.smoothscale(
+                self._ui_images["popup_dev_info"],
+                (popup_width, popup_height),
+            )
+            screen.blit(popup_bg, popup_rect.topleft)
+        else:
+            pygame.draw.rect(screen, (255, 255, 255), popup_rect, border_radius=12)
+            pygame.draw.rect(screen, AIR_FORCE_BLUE, popup_rect, 3, border_radius=12)
 
         # Title
         title_font = get_font(24, "bold")
