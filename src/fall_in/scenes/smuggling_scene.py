@@ -3,8 +3,6 @@ Smuggling Scene - Soldier smuggling selection screen after round end.
 
 Allows the player to select collected soldiers from penalty cards
 to smuggle them out. Smuggled soldiers count toward the coup ending condition.
-
-# TODO : add smuggling scene graphics.
 """
 
 import pygame
@@ -64,6 +62,11 @@ class SmugglingScene(Scene):
         # UI state
         self.hovered_card: Optional[Card] = None
         self.buttons: list[Button] = []
+
+        # UI images — pull from pre-loaded manifest cache
+        from fall_in.utils.asset_manifest import AssetManifest
+
+        self._ui_images: dict[str, pygame.Surface] = AssetManifest.get_loaded("icons")
 
         self._setup_ui()
 
@@ -354,18 +357,41 @@ class SmugglingScene(Scene):
                 overlay.set_alpha(150)
                 screen.blit(overlay, (x, y))
 
-                # Lock icon or text
-                lock_font = get_font(12)
-                lock_text = lock_font.render("미수집", True, WHITE)
-                lock_rect = lock_text.get_rect(
-                    center=(x + card_width // 2, y + card_height // 2)
-                )
-                screen.blit(lock_text, lock_rect)
+                # Lock icon
+                if "icon_lock" in self._ui_images:
+                    lock_icon = self._ui_images["icon_lock"]
+                    lock_size = min(card_width, card_height) // 3
+                    lock_icon = pygame.transform.smoothscale(
+                        lock_icon, (lock_size, lock_size)
+                    )
+                    lock_rect = lock_icon.get_rect(
+                        center=(x + card_width // 2, y + card_height // 2)
+                    )
+                    screen.blit(lock_icon, lock_rect)
+                else:
+                    lock_font = get_font(12)
+                    lock_text = lock_font.render("미수집", True, WHITE)
+                    lock_rect = lock_text.get_rect(
+                        center=(x + card_width // 2, y + card_height // 2)
+                    )
+                    screen.blit(lock_text, lock_rect)
 
             # Selection indicator
             if is_selected:
-                # Draw checkmark or highlight
-                check_font = get_font(24)
-                check_text = check_font.render("✓", True, DANGER_SAFE)
-                check_rect = check_text.get_rect(center=(x + card_width // 2, y - 10))
-                screen.blit(check_text, check_rect)
+                if "icon_check" in self._ui_images:
+                    check_icon = self._ui_images["icon_check"]
+                    check_size = 28
+                    check_icon = pygame.transform.smoothscale(
+                        check_icon, (check_size, check_size)
+                    )
+                    check_rect = check_icon.get_rect(
+                        center=(x + card_width // 2, y - 10)
+                    )
+                    screen.blit(check_icon, check_rect)
+                else:
+                    check_font = get_font(24)
+                    check_text = check_font.render("✓", True, DANGER_SAFE)
+                    check_rect = check_text.get_rect(
+                        center=(x + card_width // 2, y - 10)
+                    )
+                    screen.blit(check_text, check_rect)

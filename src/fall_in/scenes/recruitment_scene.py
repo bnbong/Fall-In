@@ -92,6 +92,13 @@ class RecruitmentScene(Scene):
             self.background, (SCREEN_WIDTH, SCREEN_HEIGHT)
         )
 
+        # UI images — pull from pre-loaded manifest cache
+        from fall_in.utils.asset_manifest import AssetManifest
+
+        self._ui_images: dict[str, pygame.Surface] = {}
+        for category in ("panels", "icons"):
+            self._ui_images.update(AssetManifest.get_loaded(category))
+
         # State
         self.phase = RecruitPhase.INITIAL
         self.phase_timer = 0.0
@@ -424,19 +431,28 @@ class RecruitmentScene(Scene):
         currency_font = get_font(14)
         cost_font = get_font(12)
 
-        info_rect = pygame.Rect(SCREEN_WIDTH - 180, 20, 160, 55)
-        pygame.draw.rect(screen, (255, 255, 255, 220), info_rect, border_radius=8)
-        pygame.draw.rect(screen, AIR_FORCE_BLUE, info_rect, width=2, border_radius=8)
+        info_rect = pygame.Rect(SCREEN_WIDTH - 220, 20, 205, 75)
+        if "panel_currency_info_sm" in self._ui_images:
+            info_img = pygame.transform.smoothscale(
+                self._ui_images["panel_currency_info_sm"],
+                (info_rect.width, info_rect.height),
+            )
+            screen.blit(info_img, info_rect.topleft)
+        else:
+            pygame.draw.rect(screen, (255, 255, 255, 220), info_rect, border_radius=8)
+            pygame.draw.rect(
+                screen, AIR_FORCE_BLUE, info_rect, width=2, border_radius=8
+            )
 
         currency_text = currency_font.render(
             f"보유 수당: {game_manager.currency}원", True, AIR_FORCE_BLUE
         )
-        screen.blit(currency_text, (info_rect.x + 10, info_rect.y + 8))
+        screen.blit(currency_text, (info_rect.x + 70, info_rect.y + 15))
 
         cost_text = cost_font.render(
             f"면담 비용: {INTERVIEW_COST}원", True, (100, 100, 100)
         )
-        screen.blit(cost_text, (info_rect.x + 10, info_rect.y + 32))
+        screen.blit(cost_text, (info_rect.x + 70, info_rect.y + 42))
 
     def _render_announcement(self, screen: pygame.Surface) -> None:
         """Render speaker announcement"""
@@ -544,19 +560,27 @@ class RecruitmentScene(Scene):
         notes_rect = pygame.Rect(
             RECRUIT_NOTES_X, RECRUIT_NOTES_Y, RECRUIT_NOTES_WIDTH, RECRUIT_NOTES_HEIGHT
         )
-        pygame.draw.rect(
-            ui_surface,
-            (*self.PANEL_BG, self.element_alpha),
-            notes_rect,
-            border_radius=5,
-        )
-        pygame.draw.rect(
-            ui_surface,
-            (*self.PANEL_BORDER, self.element_alpha),
-            notes_rect,
-            width=2,
-            border_radius=5,
-        )
+        if "panel_notes" in self._ui_images:
+            notes_img = pygame.transform.smoothscale(
+                self._ui_images["panel_notes"],
+                (notes_rect.width, notes_rect.height),
+            )
+            notes_img.set_alpha(self.element_alpha)
+            ui_surface.blit(notes_img, notes_rect.topleft)
+        else:
+            pygame.draw.rect(
+                ui_surface,
+                (*self.PANEL_BG, self.element_alpha),
+                notes_rect,
+                border_radius=5,
+            )
+            pygame.draw.rect(
+                ui_surface,
+                (*self.PANEL_BORDER, self.element_alpha),
+                notes_rect,
+                width=2,
+                border_radius=5,
+            )
 
         # Notes content
         title_font = get_font(18, "bold")
@@ -808,10 +832,17 @@ class RecruitmentScene(Scene):
 
         # Detail panel (resume style)
         panel_rect = pygame.Rect(100, 60, SCREEN_WIDTH - 200, SCREEN_HEIGHT - 160)
-        pygame.draw.rect(screen, self.PANEL_BG, panel_rect, border_radius=10)
-        pygame.draw.rect(
-            screen, self.PANEL_BORDER, panel_rect, width=3, border_radius=10
-        )
+        if "panel_soldier_detail" in self._ui_images:
+            detail_img = pygame.transform.smoothscale(
+                self._ui_images["panel_soldier_detail"],
+                (panel_rect.width, panel_rect.height),
+            )
+            screen.blit(detail_img, panel_rect.topleft)
+        else:
+            pygame.draw.rect(screen, self.PANEL_BG, panel_rect, border_radius=10)
+            pygame.draw.rect(
+                screen, self.PANEL_BORDER, panel_rect, width=3, border_radius=10
+            )
 
         # Portrait (left side)
         portrait = BattalionCard._get_portrait_hr_for_danger(soldier.danger, soldier.id)
@@ -898,12 +929,20 @@ class RecruitmentScene(Scene):
         toast_surface = pygame.Surface(
             (toast_rect.width, toast_rect.height), pygame.SRCALPHA
         )
-        pygame.draw.rect(
-            toast_surface,
-            (40, 40, 40, alpha),
-            toast_surface.get_rect(),
-            border_radius=8,
-        )
+        if "toast_bg" in self._ui_images:
+            toast_bg = pygame.transform.smoothscale(
+                self._ui_images["toast_bg"],
+                (toast_rect.width, toast_rect.height),
+            )
+            toast_bg.set_alpha(alpha)
+            toast_surface.blit(toast_bg, (0, 0))
+        else:
+            pygame.draw.rect(
+                toast_surface,
+                (40, 40, 40, alpha),
+                toast_surface.get_rect(),
+                border_radius=8,
+            )
         screen.blit(toast_surface, toast_rect.topleft)
 
         text.set_alpha(alpha)

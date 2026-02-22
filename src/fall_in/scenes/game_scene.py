@@ -195,6 +195,7 @@ class GameScene(Scene):
         from fall_in.utils.asset_manifest import AssetManifest
 
         self._hud_images: dict[str, pygame.Surface] = AssetManifest.get_loaded("hud")
+        self._hud_images.update(AssetManifest.get_loaded("panels"))
 
         # Start round
         self._start_new_round()
@@ -368,9 +369,9 @@ class GameScene(Scene):
         # === TOP BAR ===
         if "top_bar" in self._hud_images:
             top_bar_img = pygame.transform.smoothscale(
-                self._hud_images["top_bar"], (SCREEN_WIDTH, UI_TOP_BAR_HEIGHT)
+                self._hud_images["top_bar"], (SCREEN_WIDTH + 4, UI_TOP_BAR_HEIGHT + 2)
             )
-            screen.blit(top_bar_img, (0, 0))
+            screen.blit(top_bar_img, (-2, -1))
         else:
             top_bar_surface = pygame.Surface(
                 (SCREEN_WIDTH, UI_TOP_BAR_HEIGHT), pygame.SRCALPHA
@@ -544,11 +545,13 @@ class GameScene(Scene):
         if fill_ratio > 0:
             fill_key = self._get_gauge_fill_key(committed)
             if fill_key in self._hud_images:
-                fill_w = int(bar_w * fill_ratio)
-                fill_img = pygame.transform.smoothscale(
-                    self._hud_images[fill_key], (fill_w, bar_h)
+                fill_w = max(1, int(bar_w * fill_ratio))
+                # Scale to full gauge size first, then clip to avoid distortion
+                full_fill = pygame.transform.smoothscale(
+                    self._hud_images[fill_key], (bar_w, bar_h)
                 )
-                screen.blit(fill_img, (bar_x, top_y + 8))
+                clipped = full_fill.subsurface((0, 0, fill_w, bar_h))
+                screen.blit(clipped, (bar_x, top_y + 8))
             else:
                 pygame.draw.rect(
                     screen,
@@ -666,7 +669,7 @@ class GameScene(Scene):
             log_x = TURN_LOG_X
             log_y = TURN_LOG_Y
             log_width = TURN_LOG_WIDTH
-            log_height = 20 + min(len(self.turn_log), 4) * 18
+            log_height = 32 + min(len(self.turn_log), 4) * 18
 
             if "turn_log" in self._hud_images:
                 log_bg = pygame.transform.smoothscale(
@@ -712,8 +715,17 @@ class GameScene(Scene):
                 center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 50)
             )
             bg_rect = msg_rect.inflate(20, 10)
-            pygame.draw.rect(screen, WHITE, bg_rect, border_radius=5)
-            pygame.draw.rect(screen, AIR_FORCE_BLUE, bg_rect, width=1, border_radius=5)
+            if "popup_message" in self._hud_images:
+                popup_bg = pygame.transform.smoothscale(
+                    self._hud_images["popup_message"],
+                    (bg_rect.width, bg_rect.height),
+                )
+                screen.blit(popup_bg, bg_rect.topleft)
+            else:
+                pygame.draw.rect(screen, WHITE, bg_rect, border_radius=5)
+                pygame.draw.rect(
+                    screen, AIR_FORCE_BLUE, bg_rect, width=1, border_radius=5
+                )
             screen.blit(msg_surface, msg_rect)
 
         # Phase indicator
@@ -727,14 +739,12 @@ class GameScene(Scene):
         from fall_in.config import GAME_OVER_SCORE
 
         ratio = committed / GAME_OVER_SCORE
-        if ratio >= 0.8:
+        if ratio >= 0.75:
             return "gauge_critical"
-        elif ratio >= 0.6:
+        elif ratio >= 0.5:
             return "gauge_danger"
-        elif ratio >= 0.4:
+        elif ratio >= 0.25:
             return "gauge_warning"
-        elif ratio >= 0.2:
-            return "gauge_extra"
         return "gauge_safe"
 
     def _draw_player_icon_ui(self, screen: pygame.Surface, top_y: int) -> None:
@@ -1158,9 +1168,20 @@ class GameScene(Scene):
                 True,
                 AIR_FORCE_BLUE,
             )
-            screen.blit(
-                hint, (SCREEN_WIDTH // 2 - hint.get_width() // 2, SCREEN_HEIGHT - 18)
+            hint_x = SCREEN_WIDTH // 2 - hint.get_width() // 2
+            hint_y = UI_TOP_BAR_HEIGHT + 5
+            # White background pill for readability
+            pill_w = hint.get_width() + 16
+            pill_h = hint.get_height() + 6
+            hint_bg = pygame.Surface((pill_w, pill_h), pygame.SRCALPHA)
+            pygame.draw.rect(
+                hint_bg,
+                (255, 255, 255, 200),
+                (0, 0, pill_w, pill_h),
+                border_radius=4,
             )
+            screen.blit(hint_bg, (hint_x - 8, hint_y - 3))
+            screen.blit(hint, (hint_x, hint_y))
 
     def _draw_turn_timer(self, screen: pygame.Surface) -> None:
         """Draw the turn timer with color-coded urgency."""
@@ -1229,6 +1250,7 @@ class GameScene(Scene):
                     card_h,  # type: ignore
                 )
 
+                # penalty card colors
                 if card.danger <= 2:
                     color = DANGER_SAFE
                 elif card.danger <= 4:

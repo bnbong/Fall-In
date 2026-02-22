@@ -1,7 +1,5 @@
 """
 Result Scene - Round settlement screen showing penalties and scores.
-
-# TODO : add result scene graphics.
 """
 
 import pygame
@@ -17,6 +15,7 @@ from fall_in.config import (
     SCREEN_WIDTH,
     SCREEN_HEIGHT,
     AIR_FORCE_BLUE,
+    WHITE,
     DANGER_SAFE,
     DANGER_WARNING,
     DANGER_DANGER,
@@ -65,7 +64,9 @@ class ResultScene(Scene):
         # UI images — pull from pre-loaded manifest cache
         from fall_in.utils.asset_manifest import AssetManifest
 
-        self._ui_images: dict[str, pygame.Surface] = AssetManifest.get_loaded("panels")
+        self._ui_images: dict[str, pygame.Surface] = {}
+        for category in ("panels", "icons"):
+            self._ui_images.update(AssetManifest.get_loaded(category))
 
     def _setup_buttons(self) -> None:
         """Setup continue/title buttons."""
@@ -191,6 +192,31 @@ class ResultScene(Scene):
         font = get_font(20)
         small_font = get_font(16)
 
+        # Result table background panel
+        table_rect = pygame.Rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT)
+        if "panel_result_table" in self._ui_images:
+            raw = self._ui_images["panel_result_table"]
+            img_w, img_h = raw.get_size()
+            # Scale to fill screen width while preserving aspect ratio
+            scale = SCREEN_WIDTH / img_w
+            scaled_w = SCREEN_WIDTH
+            scaled_h = int(img_h * scale)
+            # If height exceeds screen, scale by height instead
+            if scaled_h > SCREEN_HEIGHT:
+                scale = SCREEN_HEIGHT / img_h
+                scaled_w = int(img_w * scale)
+                scaled_h = SCREEN_HEIGHT
+            table_bg = pygame.transform.smoothscale(raw, (scaled_w, scaled_h))
+            # Center on screen
+            bg_x = (SCREEN_WIDTH - scaled_w) // 2
+            bg_y = (SCREEN_HEIGHT - scaled_h) // 2
+            screen.blit(table_bg, (bg_x, bg_y))
+        else:
+            pygame.draw.rect(screen, WHITE, table_rect, border_radius=12)
+            pygame.draw.rect(
+                screen, AIR_FORCE_BLUE, table_rect, width=2, border_radius=12
+            )
+
         # Title
         title = title_font.render(
             f"라운드 {self.round_number} 정산", True, AIR_FORCE_BLUE
@@ -200,7 +226,7 @@ class ResultScene(Scene):
 
         # Table header
         start_y = 120
-        col_x = [150, 350, 500, 650]
+        col_x = [150, 350, 500, 680]
 
         headers = ["플레이어", "이번 라운드", "누적 위험도", "상태"]
         for i, header in enumerate(headers):
@@ -276,14 +302,28 @@ class ResultScene(Scene):
             )
             screen.blit(total_text, (col_x[2] + gauge_width + 10, row_y + 12))
 
-            # Status
+            # Status with badge icons
             if player.is_eliminated:
+                badge_key = "badge_eliminated"
                 status_text = font.render("탈락!", True, DANGER_DANGER)
             elif total >= DANGER_SCORE_THRESHOLDS["danger"]:
+                badge_key = "badge_danger"
                 status_text = font.render("위험", True, DANGER_WARNING)
             else:
+                badge_key = "badge_survived"
                 status_text = font.render("생존", True, DANGER_SAFE)
-            screen.blit(status_text, (col_x[3], row_y + 10))
+
+            if badge_key in self._ui_images:
+                raw_icon = self._ui_images[badge_key]
+                icon_h = 32
+                aspect = raw_icon.get_width() / max(raw_icon.get_height(), 1)
+                icon_w = int(icon_h * aspect)
+                badge_icon = pygame.transform.smoothscale(raw_icon, (icon_w, icon_h))
+                screen.blit(badge_icon, (col_x[3], row_y + 8))
+                if badge_key != "badge_survived":
+                    screen.blit(status_text, (col_x[3] + icon_w + 6, row_y + 10))
+            else:
+                screen.blit(status_text, (col_x[3], row_y + 10))
 
             row_y += row_height
 
@@ -294,8 +334,29 @@ class ResultScene(Scene):
                 msg = f"{', '.join(p.name for p in self.eliminated_players)} 탈락!"
             else:
                 msg = "게임 종료!"
+
+            # Popup background
             msg_text = header_font.render(msg, True, DANGER_DANGER)
-            screen.blit(msg_text, msg_text.get_rect(center=(SCREEN_WIDTH // 2, msg_y)))
+            popup_w = msg_text.get_width() + 40
+            popup_h = 50
+            popup_rect = pygame.Rect(
+                SCREEN_WIDTH // 2 - popup_w // 2,
+                msg_y - popup_h // 2,
+                popup_w,
+                popup_h,
+            )
+            if "popup_message" in self._ui_images:
+                popup_bg = pygame.transform.smoothscale(
+                    self._ui_images["popup_message"],
+                    (popup_rect.width, popup_rect.height),
+                )
+                screen.blit(popup_bg, popup_rect.topleft)
+            else:
+                pygame.draw.rect(screen, (255, 240, 240), popup_rect, border_radius=8)
+                pygame.draw.rect(
+                    screen, DANGER_DANGER, popup_rect, width=2, border_radius=8
+                )
+            screen.blit(msg_text, msg_text.get_rect(center=popup_rect.center))
 
         # Buttons
         for button in self.buttons:

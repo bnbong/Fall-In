@@ -54,6 +54,13 @@ class SpeechBubble:
         self._bubble_surface: Optional[pygame.Surface] = None
         self._needs_rebuild = True
 
+        # Load speech bubble image assets from manifest
+        from fall_in.utils.asset_manifest import AssetManifest
+
+        self._speech_images: dict[str, pygame.Surface] = AssetManifest.get_loaded(
+            "speech"
+        )
+
     def show(self, text: str, duration: Optional[float] = None) -> None:
         """Show speech bubble with text."""
         self.text = text
@@ -145,8 +152,9 @@ class SpeechBubble:
         body_x = tail_size if self.tail_direction == "left" else 0
         body_y = 0
 
-        # Draw bubble body
         body_rect = pygame.Rect(body_x, body_y, bubble_width, bubble_height)
+
+        # Draw bubble body
         pygame.draw.rect(surface, WHITE, body_rect, border_radius=10)
         pygame.draw.rect(surface, AIR_FORCE_BLUE, body_rect, width=2, border_radius=10)
 

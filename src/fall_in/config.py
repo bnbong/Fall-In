@@ -288,7 +288,7 @@ BARRACKS_Y = 200
 # UI Settings
 # =============================================================================
 UI_TOP_BAR_Y = 15
-UI_TOP_BAR_HEIGHT = 70
+UI_TOP_BAR_HEIGHT = 71
 
 UI_ELEMENT_PLAYER_ORDER_X = 55
 UI_ELEMENT_DANGER_GAUGE_WIDTH = 100
