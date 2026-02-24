@@ -497,3 +497,43 @@ SMUGGLING_CARD_SPACING_Y = 30
 SMUGGLING_MAX_CARDS_PER_ROW = 8
 SMUGGLING_SELECTED_LIFT = 20
 SMUGGLING_HOVER_LIFT = 10
+
+# =============================================================================
+# Loading Screen Settings (shared)
+# =============================================================================
+LOADING_MIN_HOLD = 1.5  # Minimum time loading screen is visible (seconds)
+
+# Game loading scene (hangar door animation)
+LOADING_DOOR_CLOSE_DURATION = 0.7  # Door close animation (seconds)
+LOADING_DOOR_OPEN_DURATION = 0.7  # Door open animation (seconds)
+LOADING_DOOR_LOAD_DELAY = 0.15  # Pause before constructing target scene
+LOADING_DOOR_COLOR = (70, 75, 85)  # Main door color
+LOADING_DOOR_RIDGE_COLOR = (55, 60, 70)  # Horizontal ridge color
+LOADING_DOOR_BORDER_COLOR = (45, 48, 55)  # Bottom border color
+LOADING_DOOR_RIDGE_SPACING = 18  # Pixels between ridges
+LOADING_DOOR_RIDGE_HEIGHT = 2  # Ridge line height
+
+# Collection loading scene (spinner animation)
+LOADING_SPINNER_LOAD_DELAY = 0.3  # Pause before constructing target scene
+LOADING_SPINNER_FADE_DURATION = 0.4  # Fade-out transition duration
+LOADING_SPINNER_RADIUS = 24  # Spinner arc radius
+LOADING_SPINNER_THICKNESS = 4  # Spinner arc thickness
+LOADING_SPINNER_SPEED = 360  # Spinner rotation speed (degrees/second)
+
+# =============================================================================
+# Common Scene UI Constants
+# =============================================================================
+SCENE_BUTTON_WIDTH = 200  # Default button width across scenes
+SCENE_BUTTON_HEIGHT = 50  # Default button height across scenes
+
+# Result scene table layout
+RESULT_TABLE_ROW_HEIGHT = 60
+RESULT_TABLE_GAUGE_WIDTH = 100
+RESULT_TABLE_GAUGE_HEIGHT = 20
+RESULT_TABLE_BADGE_ICON_SIZE = 32
+RESULT_TABLE_START_Y = 120
+
+# Game over scene layout
+GAME_OVER_BANNER_WIDTH_MAX = 600
+GAME_OVER_STATS_BOX_WIDTH = 400
+GAME_OVER_STATS_BOX_HEIGHT = 235

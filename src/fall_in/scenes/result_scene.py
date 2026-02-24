@@ -21,6 +21,13 @@ from fall_in.config import (
     DANGER_DANGER,
     GAME_OVER_SCORE,
     DANGER_SCORE_THRESHOLDS,
+    SCENE_BUTTON_WIDTH,
+    SCENE_BUTTON_HEIGHT,
+    RESULT_TABLE_ROW_HEIGHT,
+    RESULT_TABLE_GAUGE_WIDTH,
+    RESULT_TABLE_GAUGE_HEIGHT,
+    RESULT_TABLE_BADGE_ICON_SIZE,
+    RESULT_TABLE_START_Y,
 )
 
 
@@ -70,8 +77,8 @@ class ResultScene(Scene):
 
     def _setup_buttons(self) -> None:
         """Setup continue/title buttons."""
-        button_width = 200
-        button_height = 50
+        button_width = SCENE_BUTTON_WIDTH
+        button_height = SCENE_BUTTON_HEIGHT
         button_x = SCREEN_WIDTH // 2 - button_width // 2
         button_y = SCREEN_HEIGHT - 80
 
@@ -225,7 +232,7 @@ class ResultScene(Scene):
         screen.blit(title, title_rect)
 
         # Table header
-        start_y = 120
+        start_y = RESULT_TABLE_START_Y
         col_x = [150, 350, 500, 680]
 
         headers = ["플레이어", "이번 라운드", "누적 위험도", "상태"]
@@ -244,7 +251,7 @@ class ResultScene(Scene):
 
         # Player rows
         row_y = start_y + 50
-        row_height = 60
+        row_height = RESULT_TABLE_ROW_HEIGHT
 
         for player in self.players:
             player_id = player.player_id
@@ -271,8 +278,8 @@ class ResultScene(Scene):
             )
 
             # Total score with gauge
-            gauge_width = 100
-            gauge_height = 20
+            gauge_width = RESULT_TABLE_GAUGE_WIDTH
+            gauge_height = RESULT_TABLE_GAUGE_HEIGHT
             fill_ratio = min(total / GAME_OVER_SCORE, 1.0)
             fill_color = get_danger_color(total)
 
@@ -315,7 +322,7 @@ class ResultScene(Scene):
 
             if badge_key in self._ui_images:
                 raw_icon = self._ui_images[badge_key]
-                icon_h = 32
+                icon_h = RESULT_TABLE_BADGE_ICON_SIZE
                 aspect = raw_icon.get_width() / max(raw_icon.get_height(), 1)
                 icon_w = int(icon_h * aspect)
                 badge_icon = pygame.transform.smoothscale(raw_icon, (icon_w, icon_h))

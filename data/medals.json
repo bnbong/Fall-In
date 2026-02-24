@@ -12,7 +12,7 @@
         },
         {
             "id": "five_wins",
-            "name": "5연승",
+            "name": "무사고 ORI 5회 성료",
             "description": "게임에서 5회 승리",
             "icon": "medal_five_wins.png",
             "condition": {
@@ -22,7 +22,7 @@
         },
         {
             "id": "collector",
-            "name": "수집가",
+            "name": "병사들의 친구",
             "description": "모든 병사와 면담 완료",
             "icon": "medal_collector.png",
             "condition": {
@@ -39,8 +39,26 @@
             }
         },
         {
+            "id": "coup_win",
+            "name": "성공하면 혁명",
+            "description": "쿠테타 엔딩 조건 달성 상태로 게임 승리",
+            "icon": "medal_coup_win.png",
+            "condition": {
+                "type": "coup_win"
+            }
+        },
+        {
+            "id": "coup_lose",
+            "name": "실패하면 반역",
+            "description": "쿠테타 엔딩 조건 달성 상태로 게임 탈락",
+            "icon": "medal_coup_lose.png",
+            "condition": {
+                "type": "coup_lose"
+            }
+        },
+        {
             "id": "survivor",
-            "name": "생존자",
+            "name": "Last man standing",
             "description": "10라운드 이상 생존",
             "icon": "medal_survivor.png",
             "condition": {
@@ -50,7 +68,7 @@
         },
         {
             "id": "low_danger",
-            "name": "안전 제일",
+            "name": "관상학 고수",
             "description": "위험도 20 이하로 게임 승리",
             "icon": "medal_low_danger.png",
             "condition": {

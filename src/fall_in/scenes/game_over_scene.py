@@ -26,6 +26,10 @@ from fall_in.config import (
     REWARD_VICTORY_PER_ROUND,
     REWARD_DEFEAT_BASE,
     REWARD_DEFEAT_PER_ROUND,
+    SCENE_BUTTON_WIDTH,
+    SCENE_BUTTON_HEIGHT,
+    GAME_OVER_STATS_BOX_WIDTH,
+    GAME_OVER_STATS_BOX_HEIGHT,
 )
 
 
@@ -164,8 +168,8 @@ class GameOverScene(Scene):
 
     def _setup_buttons(self) -> None:
         """Setup return button."""
-        button_width = 200
-        button_height = 50
+        button_width = SCENE_BUTTON_WIDTH
+        button_height = SCENE_BUTTON_HEIGHT
         button_x = SCREEN_WIDTH // 2 - button_width // 2
         button_y = SCREEN_HEIGHT - 100
 
@@ -268,7 +272,12 @@ class GameOverScene(Scene):
         )
 
         # Stats box
-        stats_rect = pygame.Rect(SCREEN_WIDTH // 2 - 200, 180, 400, 235)
+        stats_rect = pygame.Rect(
+            SCREEN_WIDTH // 2 - GAME_OVER_STATS_BOX_WIDTH // 2,
+            180,
+            GAME_OVER_STATS_BOX_WIDTH,
+            GAME_OVER_STATS_BOX_HEIGHT,
+        )
         if "panel_stats_box" in self._ui_images:
             stats_img = pygame.transform.smoothscale(
                 self._ui_images["panel_stats_box"],

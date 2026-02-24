@@ -121,13 +121,14 @@ class TitleScene(Scene):
         return None
 
     def _on_start_game(self) -> None:
-        """Start game callback"""
-        from fall_in.core.game_manager import GameManager, GameState
-        from fall_in.scenes.game_scene import GameScene
+        """Start game callback — goes through loading screen"""
+        from fall_in.core.game_manager import GameManager
+        from fall_in.scenes.game_loading_scene import GameLoadingScene
 
         game = GameManager()
-        game.state = GameState.PLAYING
-        game.change_scene(GameScene())
+        # Capture current screen so title stays visible behind the closing door
+        prev_screen = game.screen.copy() if game.screen else None
+        game.change_scene(GameLoadingScene(prev_screen=prev_screen))
 
     def _on_tutorial(self) -> None:
         """Tutorial callback - opens tutorial information"""
@@ -139,13 +140,12 @@ class TitleScene(Scene):
         self.show_dev_info = True
 
     def _on_collection(self) -> None:
-        """Collection callback - open recruitment scene"""
-        from fall_in.core.game_manager import GameManager, GameState
-        from fall_in.scenes.recruitment_scene import RecruitmentScene
+        """Collection callback — goes through loading screen"""
+        from fall_in.core.game_manager import GameManager
+        from fall_in.scenes.collection_loading_scene import CollectionLoadingScene
 
         game = GameManager()
-        game.state = GameState.COLLECTION
-        game.change_scene(RecruitmentScene())
+        game.change_scene(CollectionLoadingScene())
 
     def _on_settings(self) -> None:
         """Settings callback"""
