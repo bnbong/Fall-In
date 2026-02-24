@@ -320,8 +320,6 @@ class ResultScene(Scene):
                 icon_w = int(icon_h * aspect)
                 badge_icon = pygame.transform.smoothscale(raw_icon, (icon_w, icon_h))
                 screen.blit(badge_icon, (col_x[3], row_y + 8))
-                if badge_key != "badge_survived":
-                    screen.blit(status_text, (col_x[3] + icon_w + 6, row_y + 10))
             else:
                 screen.blit(status_text, (col_x[3], row_y + 10))
 

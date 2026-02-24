@@ -1,7 +1,6 @@
 """
 Game Over Scene - Shows final results, currency rewards, and medals.
-
-# TODO : add game over scene graphics.
+Two-phase display: banner first, click to reveal details.
 """
 
 import json
@@ -33,7 +32,12 @@ from fall_in.config import (
 class GameOverScene(Scene):
     """
     Game over scene showing final results and currency rewards.
+    Phase 1: Show banner (victory/defeat/coup).
+    Phase 2: Click anywhere to reveal stats, rewards, and title button.
     """
+
+    PHASE_BANNER = 0
+    PHASE_DETAILS = 1
 
     def __init__(
         self, winner: Optional[Player], players: list[Player], round_number: int
@@ -42,6 +46,7 @@ class GameOverScene(Scene):
         self.winner = winner
         self.players = players
         self.round_number = round_number
+        self.phase = self.PHASE_BANNER
 
         # Find human player
         self.human_player = next(
@@ -66,7 +71,7 @@ class GameOverScene(Scene):
 
             PrestigeManager().unlock_coup()
 
-        # Buttons
+        # Buttons (created but only shown in phase 2)
         self.buttons: list[Button] = []
         self._setup_buttons()
 
@@ -186,66 +191,84 @@ class GameOverScene(Scene):
 
     def handle_event(self, event: pygame.event.Event) -> None:
         """Handle events."""
-        for button in self.buttons:
-            button.handle_event(event)
+        if self.phase == self.PHASE_BANNER:
+            # Click anywhere to advance to details
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                self.phase = self.PHASE_DETAILS
+            elif event.type == pygame.KEYDOWN:
+                if event.key in (pygame.K_SPACE, pygame.K_RETURN):
+                    self.phase = self.PHASE_DETAILS
+        else:
+            # Phase 2: handle buttons
+            for button in self.buttons:
+                button.handle_event(event)
 
-        if event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_SPACE or event.key == pygame.K_RETURN:
-                self._return_to_title()
+            if event.type == pygame.KEYDOWN:
+                if event.key in (pygame.K_SPACE, pygame.K_RETURN):
+                    self._return_to_title()
 
     def update(self, dt: float) -> None:
         """Update scene."""
-        for button in self.buttons:
-            button.update(dt)
+        if self.phase == self.PHASE_DETAILS:
+            for button in self.buttons:
+                button.update(dt)
 
     def render(self, screen: pygame.Surface) -> None:
         """Render game over screen."""
+        if self.phase == self.PHASE_BANNER:
+            self._render_banner_phase(screen)
+        else:
+            self._render_details_phase(screen)
+
+    # ------------------------------------------------------------------
+    # Phase 1: Banner only
+    # ------------------------------------------------------------------
+
+    def _render_banner_phase(self, screen: pygame.Surface) -> None:
+        """Show only the result banner and a click hint."""
+        title_font = get_font(48, "bold")
+        small_font = get_font(16)
+
+        # Result title + banner
+        title, title_color, banner_key = self._get_title_info()
+        self._draw_banner(screen, banner_key, y_center=SCREEN_HEIGHT // 2 - 30)
+
+        title_text = title_font.render(title, True, title_color)
+        screen.blit(
+            title_text,
+            title_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 30)),
+        )
+
+        # Click hint
+        hint = small_font.render("화면을 클릭하여 계속...", True, AIR_FORCE_BLUE)
+        screen.blit(
+            hint,
+            hint.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT - 60)),
+        )
+
+    # ------------------------------------------------------------------
+    # Phase 2: Details
+    # ------------------------------------------------------------------
+
+    def _render_details_phase(self, screen: pygame.Surface) -> None:
+        """Show banner, stats, rewards, and title button."""
         title_font = get_font(48, "bold")
         header_font = get_font(28, "bold")
         font = get_font(22)
         small_font = get_font(16)
 
-        # Result title
-        if self.is_coup_ending:
-            title = "🔥 쿠테타 성공! 🔥"
-            title_color = COUP_TITLE_COLOR
-            banner_key = "banner_coup"
-        elif self.is_victory:
-            title = "승리!"
-            title_color = DANGER_SAFE
-            banner_key = "banner_victory"
-        else:
-            title = "패배..."
-            title_color = DANGER_DANGER
-            banner_key = "banner_defeat"
-
-        # Draw banner behind title
-        if banner_key in self._ui_images:
-            banner_img = self._ui_images[banner_key]
-            banner_w = min(600, SCREEN_WIDTH - 100)
-            aspect = banner_img.get_height() / banner_img.get_width()
-            banner_h = int(banner_w * aspect)
-            scaled_banner = pygame.transform.smoothscale(
-                banner_img, (banner_w, banner_h)
-            )
-            screen.blit(
-                scaled_banner, (SCREEN_WIDTH // 2 - banner_w // 2, 100 - banner_h // 2)
-            )
+        # Result title + banner (top)
+        title, title_color, banner_key = self._get_title_info()
+        self._draw_banner(screen, banner_key, y_center=80)
 
         title_text = title_font.render(title, True, title_color)
-        screen.blit(title_text, title_text.get_rect(center=(SCREEN_WIDTH // 2, 100)))
-
-        # Subtitle
-        subtitle = (
-            f"최종 승자: {self.winner.name}" if self.winner else "모든 플레이어 탈락"
-        )
-        subtitle_text = header_font.render(subtitle, True, AIR_FORCE_BLUE)
         screen.blit(
-            subtitle_text, subtitle_text.get_rect(center=(SCREEN_WIDTH // 2, 160))
+            title_text,
+            title_text.get_rect(center=(SCREEN_WIDTH // 2, 80)),
         )
 
         # Stats box
-        stats_rect = pygame.Rect(SCREEN_WIDTH // 2 - 200, 220, 400, 200)
+        stats_rect = pygame.Rect(SCREEN_WIDTH // 2 - 200, 180, 400, 235)
         if "panel_stats_box" in self._ui_images:
             stats_img = pygame.transform.smoothscale(
                 self._ui_images["panel_stats_box"],
@@ -258,7 +281,7 @@ class GameOverScene(Scene):
                 screen, AIR_FORCE_BLUE, stats_rect, width=2, border_radius=10
             )
 
-        stats_y = stats_rect.y + 20
+        stats_y = stats_rect.y + 48
         screen.blit(
             font.render(f"진행 라운드: {self.round_number}", True, AIR_FORCE_BLUE),
             (stats_rect.x + 30, stats_y),
@@ -300,25 +323,26 @@ class GameOverScene(Scene):
             (stats_rect.x + 30, stats_y + 150),
         )
 
-        # Final rankings
-        rankings_y = stats_rect.y + stats_rect.height + 30
-        rankings_title = header_font.render("최종 순위", True, AIR_FORCE_BLUE)
-        screen.blit(
-            rankings_title,
-            (SCREEN_WIDTH // 2 - rankings_title.get_width() // 2, rankings_y),
-        )
-
-        sorted_players = sorted(self.players, key=lambda p: p.penalty_score)
-        for i, player in enumerate(sorted_players):
-            rank_y = rankings_y + 40 + i * 30
+        # Final rankings — only show on victory
+        if self.is_victory:
+            rankings_y = stats_rect.y + stats_rect.height + 30
+            rankings_title = header_font.render("최종 순위", True, AIR_FORCE_BLUE)
             screen.blit(
-                font.render(
-                    f"{i + 1}. {player.name} - {player.penalty_score}점",
-                    True,
-                    AIR_FORCE_BLUE,
-                ),
-                (SCREEN_WIDTH // 2 - 100, rank_y),
+                rankings_title,
+                (SCREEN_WIDTH // 2 - rankings_title.get_width() // 2, rankings_y),
             )
+
+            sorted_players = sorted(self.players, key=lambda p: p.penalty_score)
+            for i, player in enumerate(sorted_players):
+                rank_y = rankings_y + 40 + i * 30
+                screen.blit(
+                    font.render(
+                        f"{i + 1}. {player.name} - {player.penalty_score}점",
+                        True,
+                        AIR_FORCE_BLUE,
+                    ),
+                    (SCREEN_WIDTH // 2 - 100, rank_y),
+                )
 
         # Buttons
         for button in self.buttons:
@@ -330,3 +354,33 @@ class GameOverScene(Scene):
             hint_text,
             (SCREEN_WIDTH // 2 - hint_text.get_width() // 2, SCREEN_HEIGHT - 40),
         )
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    def _get_title_info(self) -> tuple[str, tuple, str]:
+        """Return (title_text, title_color, banner_key)."""
+        if self.is_coup_ending:
+            return "🔥 쿠테타 성공! 🔥", COUP_TITLE_COLOR, "banner_coup"
+        elif self.is_victory:
+            return "승리!", DANGER_SAFE, "banner_victory"
+        else:
+            return "패배...", DANGER_DANGER, "banner_defeat"
+
+    def _draw_banner(
+        self, screen: pygame.Surface, banner_key: str, y_center: int
+    ) -> None:
+        """Draw the result banner centered at y_center."""
+        if banner_key in self._ui_images:
+            banner_img = self._ui_images[banner_key]
+            banner_w = min(600, SCREEN_WIDTH - 100)
+            aspect = banner_img.get_height() / banner_img.get_width()
+            banner_h = int(banner_w * aspect)
+            scaled_banner = pygame.transform.smoothscale(
+                banner_img, (banner_w, banner_h)
+            )
+            screen.blit(
+                scaled_banner,
+                (SCREEN_WIDTH // 2 - banner_w // 2, y_center - banner_h // 2),
+            )

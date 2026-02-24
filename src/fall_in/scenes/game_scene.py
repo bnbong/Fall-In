@@ -197,6 +197,9 @@ class GameScene(Scene):
         self._hud_images: dict[str, pygame.Surface] = AssetManifest.get_loaded("hud")
         self._hud_images.update(AssetManifest.get_loaded("panels"))
 
+        # Debug overlay
+        self._debug_overlay = False
+
         # Start round
         self._start_new_round()
 
@@ -443,8 +446,40 @@ class GameScene(Scene):
             AIR_FORCE_BLUE,
         )
 
+        # Danger color legend below UI bar
+        legend_y = UI_TOP_BAR_HEIGHT + 3
+        legend_items = [
+            ((100, 150, 100), "1"),
+            ((200, 180, 50), "2"),
+            ((230, 150, 50), "3"),
+            ((200, 50, 50), "5"),
+            ((100, 50, 150), "7"),
+        ]
+        legend_font = mini_font
+        draw_outlined_text(
+            screen,
+            "위험도 포인트 : ",
+            legend_font,
+            (hangar_x - 5, legend_y + 1),
+            WHITE,
+            TOP_BAR_OUTLINE_COLOR,
+        )
+        label_w = legend_font.size("위험도 포인트 : ")[0]
+        lx = hangar_x - 5 + label_w
+        for color, pts in legend_items:
+            pygame.draw.circle(screen, color, (lx + 6, legend_y + 6), 6)
+            draw_outlined_text(
+                screen,
+                pts,
+                legend_font,
+                (lx + 6 - legend_font.size(pts)[0] // 2, legend_y + 1),
+                WHITE,
+                TOP_BAR_OUTLINE_COLOR,
+            )
+            lx += 15
+
         # Player order display
-        order_y = top_y + 55
+        order_y = top_y + 59
         draw_outlined_text(
             screen, "순서:", mini_font, (20, order_y), WHITE, TOP_BAR_OUTLINE_COLOR
         )
@@ -533,6 +568,20 @@ class GameScene(Scene):
                 self._hud_images["gauge_bg"], (bar_w, bar_h)
             )
             screen.blit(gauge_bg_img, (bar_x, top_y + 8))
+
+            # Draw fill on top of bg, inset to stay within frame
+            if fill_ratio > 0:
+                fill_key = self._get_gauge_fill_key(committed)
+                if fill_key in self._hud_images:
+                    pad_x, pad_y = 3, 4
+                    inner_w = bar_w - pad_x * 2
+                    inner_h = bar_h - pad_y * 2
+                    fill_w = max(1, int(inner_w * fill_ratio))
+                    full_fill = pygame.transform.smoothscale(
+                        self._hud_images[fill_key], (inner_w, inner_h)
+                    )
+                    clipped = full_fill.subsurface((0, 0, fill_w, inner_h))
+                    screen.blit(clipped, (bar_x + pad_x, top_y + 8 + pad_y))
         else:
             pygame.draw.rect(
                 screen,
@@ -541,18 +590,8 @@ class GameScene(Scene):
                 border_radius=3,
             )
 
-        # Gauge fill overlay
-        if fill_ratio > 0:
-            fill_key = self._get_gauge_fill_key(committed)
-            if fill_key in self._hud_images:
-                fill_w = max(1, int(bar_w * fill_ratio))
-                # Scale to full gauge size first, then clip to avoid distortion
-                full_fill = pygame.transform.smoothscale(
-                    self._hud_images[fill_key], (bar_w, bar_h)
-                )
-                clipped = full_fill.subsurface((0, 0, fill_w, bar_h))
-                screen.blit(clipped, (bar_x, top_y + 8))
-            else:
+            # Gauge fill overlay (fallback)
+            if fill_ratio > 0:
                 pygame.draw.rect(
                     screen,
                     get_danger_color(committed),
@@ -560,7 +599,6 @@ class GameScene(Scene):
                     border_radius=3,
                 )
 
-        if "gauge_bg" not in self._hud_images:
             pygame.draw.rect(
                 screen,
                 AIR_FORCE_BLUE,
@@ -876,16 +914,31 @@ class GameScene(Scene):
         """Handle pygame events."""
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
+                if self._debug_overlay:
+                    self._debug_overlay = False
+                    return
                 from fall_in.core.game_manager import GameManager
                 from fall_in.scenes.title_scene import TitleScene
 
                 GameManager().change_scene(TitleScene())
+                return
+            elif event.key == pygame.K_F12:
+                from fall_in.config import DEBUG_MODE
+
+                if DEBUG_MODE:
+                    self._debug_overlay = not self._debug_overlay
+                return
             elif event.key == pygame.K_SPACE:
                 if (
                     self.phase == GamePhase.SELECTING
                     and self.selected_card_index is not None
                 ):
                     self._confirm_card_selection()
+
+        # Handle debug hotkeys when overlay is active
+        if self._debug_overlay and event.type == pygame.KEYDOWN:
+            self._handle_debug_key(event.key)
+            return
 
         if self.phase == GamePhase.SELECTING:
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -1183,6 +1236,10 @@ class GameScene(Scene):
             screen.blit(hint_bg, (hint_x - 8, hint_y - 3))
             screen.blit(hint, (hint_x, hint_y))
 
+        # Debug overlay
+        if self._debug_overlay:
+            self._draw_debug_overlay(screen)
+
     def _draw_turn_timer(self, screen: pygame.Surface) -> None:
         """Draw the turn timer with color-coded urgency."""
         timer_font = get_font(28, "bold")
@@ -1267,3 +1324,119 @@ class GameScene(Scene):
                     num_font = get_font(int(12 * scale))
                     num_text = num_font.render(str(card.number), True, WHITE)
                     screen.blit(num_text, num_text.get_rect(center=card_rect.center))
+
+    # ------------------------------------------------------------------
+    # Debug helpers
+    # ------------------------------------------------------------------
+
+    def _handle_debug_key(self, key: int) -> None:
+        """Handle debug hotkeys when overlay is active."""
+        from fall_in.core.game_manager import GameManager
+        from fall_in.config import GAME_OVER_SCORE
+
+        if key == pygame.K_F1:
+            # Force game over — eliminate human player
+            self.human_player.penalty_score = GAME_OVER_SCORE + 1
+            self.human_player.is_eliminated = True
+            from fall_in.scenes.game_over_scene import GameOverScene
+
+            winner = next(
+                (
+                    p
+                    for p in self.players
+                    if not p.is_eliminated and p != self.human_player
+                ),
+                None,
+            )
+            GameManager().change_scene(
+                GameOverScene(winner, self.players, self.rules.round_state.round_number)
+            )
+        elif key == pygame.K_F2:
+            # Force victory — eliminate all AI
+            for p in self.players:
+                if p != self.human_player:
+                    p.penalty_score = GAME_OVER_SCORE + 1
+                    p.is_eliminated = True
+            from fall_in.scenes.game_over_scene import GameOverScene
+
+            GameManager().change_scene(
+                GameOverScene(
+                    self.human_player, self.players, self.rules.round_state.round_number
+                )
+            )
+        elif key == pygame.K_F3:
+            # Jump to result scene
+            self._go_to_result_scene()
+        elif key == pygame.K_F4:
+            # Add 30 danger to player
+            pid = self.human_player.player_id
+            self.rules.committed_scores[pid] += 30
+            new_score = self.rules.committed_scores[pid]
+            self.message = f"[DEBUG] 위험도 +30 → {new_score}"
+            self.message_timer = 2.0
+            self._debug_overlay = False
+        elif key == pygame.K_F5:
+            # Reset danger to 0
+            pid = self.human_player.player_id
+            self.rules.committed_scores[pid] = 0
+            self.message = "[DEBUG] 위험도 초기화"
+            self.message_timer = 2.0
+            self._debug_overlay = False
+        elif key == pygame.K_F6:
+            # Skip to next round
+            self.phase = GamePhase.ROUND_END
+            self.phase_timer = 0.1
+            self._debug_overlay = False
+
+    def _draw_debug_overlay(self, screen: pygame.Surface) -> None:
+        """Render semi-transparent debug overlay with hotkey hints."""
+        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 150))
+        screen.blit(overlay, (0, 0))
+
+        panel_w, panel_h = 340, 260
+        panel_x = SCREEN_WIDTH // 2 - panel_w // 2
+        panel_y = SCREEN_HEIGHT // 2 - panel_h // 2
+        pygame.draw.rect(
+            screen,
+            (20, 20, 50),
+            (panel_x, panel_y, panel_w, panel_h),
+            border_radius=10,
+        )
+        pygame.draw.rect(
+            screen,
+            AIR_FORCE_BLUE,
+            (panel_x, panel_y, panel_w, panel_h),
+            width=2,
+            border_radius=10,
+        )
+
+        title_font = get_font(20, "bold")
+        item_font = get_font(14)
+
+        title = title_font.render("🔧 인게임 디버그", True, WHITE)
+        screen.blit(
+            title, (panel_x + panel_w // 2 - title.get_width() // 2, panel_y + 12)
+        )
+
+        items = [
+            ("F1", "강제 패배 (게임 오버)"),
+            ("F2", "강제 승리"),
+            ("F3", "정산 화면으로 이동"),
+            ("F4", "위험도 +30"),
+            ("F5", "위험도 초기화"),
+            ("F6", "다음 라운드 스킵"),
+        ]
+
+        for i, (hotkey, desc) in enumerate(items):
+            y = panel_y + 50 + i * 30
+            key_text = item_font.render(f"[{hotkey}]", True, DANGER_WARNING)
+            desc_text = item_font.render(f" {desc}", True, WHITE)
+            screen.blit(key_text, (panel_x + 20, y))
+            screen.blit(desc_text, (panel_x + 20 + key_text.get_width(), y))
+
+        hint = item_font.render("[ESC/F12] 닫기", True, LIGHT_BLUE)
+        screen.blit(
+            hint,
+            (panel_x + panel_w // 2 - hint.get_width() // 2, panel_y + panel_h - 28),
+        )
