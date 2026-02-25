@@ -12,6 +12,7 @@ from typing import Optional
 import pygame
 
 from fall_in.scenes.base_scene import Scene
+from fall_in.utils.debug_overlay import DebugOverlayMixin, DebugHotkey
 from fall_in.utils.asset_loader import get_font, AssetLoader
 from fall_in.utils.tween import Tween, TweenGroup
 from fall_in.utils.danger_utils import (
@@ -79,6 +80,9 @@ from fall_in.config import (
     CARD_DEAL_DURATION,
     AI_THINKING_DURATION,
     PLACEMENT_PAUSE_DURATION,
+    ORDER_ANNOUNCE_SHUFFLE_DURATION,
+    ORDER_ANNOUNCE_HOLD_DURATION,
+    ORDER_ANNOUNCE_SHRINK_DURATION,
 )
 
 
@@ -86,6 +90,7 @@ class GamePhase(Enum):
     """UI game phase states."""
 
     STARTING = auto()
+    ORDER_ANNOUNCE = auto()
     DEALING = auto()
     SELECTING = auto()
     AI_THINKING = auto()
@@ -97,7 +102,7 @@ class GamePhase(Enum):
     GAME_OVER = auto()
 
 
-class GameScene(Scene):
+class GameScene(Scene, DebugOverlayMixin):
     """
     Main game scene with isometric 4x6 board.
     Integrates with game rules for actual gameplay.
@@ -166,6 +171,11 @@ class GameScene(Scene):
         # Persistent soldier figures on board (card.number -> SoldierFigure)
         self.soldier_figures: dict[int, SoldierFigure] = {}
 
+        # Order announce animation state
+        self._order_announce_timer = 0.0
+        self._order_announce_sub = 0  # 0=shuffle, 1=hold, 2=shrink
+        self._prev_order: list = []  # previous round player order
+
         # Load background image (with extra padding for shake)
         loader = AssetLoader()
         self.background_image = loader.load_image(
@@ -197,8 +207,8 @@ class GameScene(Scene):
         self._hud_images: dict[str, pygame.Surface] = AssetManifest.get_loaded("hud")
         self._hud_images.update(AssetManifest.get_loaded("panels"))
 
-        # Debug overlay
-        self._debug_overlay = False
+        # Debug overlay (via mixin)
+        self.init_debug_overlay(self._get_game_debug_hotkeys())
 
         # Start round
         self._start_new_round()
@@ -209,20 +219,28 @@ class GameScene(Scene):
 
     def _start_new_round(self) -> None:
         """Start a new round."""
+        # Save previous order before rotation
+        self._prev_order = list(self.rules.player_order)
+
         self.rules.start_new_round()
         self.turn_log.clear()
         self.placement_queue.clear()
-        self.message = f"라운드 {self.rules.round_state.round_number} 시작!"
-        self.message_timer = 2.0
 
         committed = self.rules.get_player_committed_score(self.human_player)
         self.commander.set_expression_from_danger(committed)
 
-        self._start_dealing_animation()
+        # Start dealing animation in background
+        self._start_dealing_animation_cards_only()
 
-    def _start_dealing_animation(self) -> None:
-        """Start cards dealing animation from barracks to hand."""
-        self.phase = GamePhase.DEALING
+        # Start order announce overlay
+        self._order_announce_timer = 0.0
+        round_num = self.rules.round_state.round_number
+        # Round 1: skip shuffle, go straight to hold
+        self._order_announce_sub = 0 if round_num > 1 else 1
+        self.phase = GamePhase.ORDER_ANNOUNCE
+
+    def _start_dealing_animation_cards_only(self) -> None:
+        """Setup dealing card tweens without changing the phase."""
         self.dealing_cards.clear()
         self.dealt_card_count = 0
 
@@ -261,7 +279,7 @@ class GameScene(Scene):
 
         self.dealt_card_count = arrived_count
 
-        if all_complete:
+        if all_complete and self.phase == GamePhase.DEALING:
             self.phase = GamePhase.SELECTING
             self.turn_timer = TURN_TIMEOUT_SECONDS
             self.dealing_cards.clear()
@@ -831,7 +849,7 @@ class GameScene(Scene):
             return
 
         arrived_cards = set()
-        if self.phase == GamePhase.DEALING:
+        if self.phase in (GamePhase.DEALING, GamePhase.ORDER_ANNOUNCE):
             for card, tween in self.dealing_cards:
                 if tween.is_complete:
                     arrived_cards.add(card)
@@ -868,7 +886,10 @@ class GameScene(Scene):
         for i in draw_order:
             card = hand[i]
 
-            if self.phase == GamePhase.DEALING and card not in arrived_cards:
+            if (
+                self.phase in (GamePhase.DEALING, GamePhase.ORDER_ANNOUNCE)
+                and card not in arrived_cards
+            ):
                 continue
             if self.dragging and i == self.selected_card_index:
                 continue
@@ -912,21 +933,16 @@ class GameScene(Scene):
 
     def handle_event(self, event: pygame.event.Event) -> None:
         """Handle pygame events."""
+        # Debug overlay handling (via mixin)
+        if self.handle_debug_event(event):
+            return
+
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
-                if self._debug_overlay:
-                    self._debug_overlay = False
-                    return
                 from fall_in.core.game_manager import GameManager
                 from fall_in.scenes.title_scene import TitleScene
 
                 GameManager().change_scene(TitleScene())
-                return
-            elif event.key == pygame.K_F12:
-                from fall_in.config import DEBUG_MODE
-
-                if DEBUG_MODE:
-                    self._debug_overlay = not self._debug_overlay
                 return
             elif event.key == pygame.K_SPACE:
                 if (
@@ -934,11 +950,6 @@ class GameScene(Scene):
                     and self.selected_card_index is not None
                 ):
                     self._confirm_card_selection()
-
-        # Handle debug hotkeys when overlay is active
-        if self._debug_overlay and event.type == pygame.KEYDOWN:
-            self._handle_debug_key(event.key)
-            return
 
         if self.phase == GamePhase.SELECTING:
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -1149,6 +1160,31 @@ class GameScene(Scene):
                             self.screen_shake_intensity = figure.get_shake_intensity()
                             self.screen_shake_timer = SCREEN_SHAKE_DURATION
 
+        # Order announce animation (dealing runs concurrently)
+        if self.phase == GamePhase.ORDER_ANNOUNCE:
+            self._update_dealing_animation(dt)
+            self._order_announce_timer += dt
+            if self._order_announce_sub == 0:  # shuffle
+                if self._order_announce_timer >= ORDER_ANNOUNCE_SHUFFLE_DURATION:
+                    self._order_announce_sub = 1
+                    self._order_announce_timer = 0.0
+            elif self._order_announce_sub == 1:  # hold
+                if self._order_announce_timer >= ORDER_ANNOUNCE_HOLD_DURATION:
+                    self._order_announce_sub = 2
+                    self._order_announce_timer = 0.0
+            elif self._order_announce_sub == 2:  # shrink
+                if self._order_announce_timer >= ORDER_ANNOUNCE_SHRINK_DURATION:
+                    # If dealing already finished, go to SELECTING
+                    all_dealt = all(tw.is_complete for _, tw in self.dealing_cards)
+                    if all_dealt:
+                        self.phase = GamePhase.SELECTING
+                        self.turn_timer = TURN_TIMEOUT_SECONDS
+                        self.dealing_cards.clear()
+                    else:
+                        self.phase = GamePhase.DEALING
+            self.commander.update(dt)
+            return
+
         # Dealing animation
         if self.phase == GamePhase.DEALING:
             self._update_dealing_animation(dt)
@@ -1202,13 +1238,19 @@ class GameScene(Scene):
         self._draw_ui(screen)
         self._draw_hand(screen)
 
-        # Dealing animation
-        if self.phase == GamePhase.DEALING:
+        # Dealing animation (also runs during ORDER_ANNOUNCE)
+        if self.phase in (GamePhase.DEALING, GamePhase.ORDER_ANNOUNCE):
             self._draw_dealing_animation(screen)
-            hint = get_font(18).render("카드 배급 중...", True, AIR_FORCE_BLUE)
-            screen.blit(
-                hint, (SCREEN_WIDTH // 2 - hint.get_width() // 2, SCREEN_HEIGHT - 50)
-            )
+            if self.phase == GamePhase.DEALING:
+                hint = get_font(18).render("카드 배급 중...", True, AIR_FORCE_BLUE)
+                screen.blit(
+                    hint,
+                    (SCREEN_WIDTH // 2 - hint.get_width() // 2, SCREEN_HEIGHT - 50),
+                )
+
+        # Order announce popup
+        if self.phase == GamePhase.ORDER_ANNOUNCE:
+            self._draw_order_announce(screen)
 
         # Penalty card animations
         self._draw_penalty_animation(screen)
@@ -1236,9 +1278,8 @@ class GameScene(Scene):
             screen.blit(hint_bg, (hint_x - 8, hint_y - 3))
             screen.blit(hint, (hint_x, hint_y))
 
-        # Debug overlay
-        if self._debug_overlay:
-            self._draw_debug_overlay(screen)
+        # Debug overlay (via mixin)
+        self.draw_debug_overlay(screen)
 
     def _draw_turn_timer(self, screen: pygame.Surface) -> None:
         """Draw the turn timer with color-coded urgency."""
@@ -1326,117 +1367,211 @@ class GameScene(Scene):
                     screen.blit(num_text, num_text.get_rect(center=card_rect.center))
 
     # ------------------------------------------------------------------
-    # Debug helpers
+    # Debug hotkeys (via DebugOverlayMixin)
     # ------------------------------------------------------------------
 
-    def _handle_debug_key(self, key: int) -> None:
-        """Handle debug hotkeys when overlay is active."""
-        from fall_in.core.game_manager import GameManager
-        from fall_in.config import GAME_OVER_SCORE
-
-        if key == pygame.K_F1:
-            # Force game over — eliminate human player
-            self.human_player.penalty_score = GAME_OVER_SCORE + 1
-            self.human_player.is_eliminated = True
-            from fall_in.scenes.game_over_scene import GameOverScene
-
-            winner = next(
-                (
-                    p
-                    for p in self.players
-                    if not p.is_eliminated and p != self.human_player
-                ),
-                None,
-            )
-            GameManager().change_scene(
-                GameOverScene(winner, self.players, self.rules.round_state.round_number)
-            )
-        elif key == pygame.K_F2:
-            # Force victory — eliminate all AI
-            for p in self.players:
-                if p != self.human_player:
-                    p.penalty_score = GAME_OVER_SCORE + 1
-                    p.is_eliminated = True
-            from fall_in.scenes.game_over_scene import GameOverScene
-
-            GameManager().change_scene(
-                GameOverScene(
-                    self.human_player, self.players, self.rules.round_state.round_number
-                )
-            )
-        elif key == pygame.K_F3:
-            # Jump to result scene
-            self._go_to_result_scene()
-        elif key == pygame.K_F4:
-            # Add 30 danger to player
-            pid = self.human_player.player_id
-            self.rules.committed_scores[pid] += 30
-            new_score = self.rules.committed_scores[pid]
-            self.message = f"[DEBUG] 위험도 +30 → {new_score}"
-            self.message_timer = 2.0
-            self._debug_overlay = False
-        elif key == pygame.K_F5:
-            # Reset danger to 0
-            pid = self.human_player.player_id
-            self.rules.committed_scores[pid] = 0
-            self.message = "[DEBUG] 위험도 초기화"
-            self.message_timer = 2.0
-            self._debug_overlay = False
-        elif key == pygame.K_F6:
-            # Skip to next round
-            self.phase = GamePhase.ROUND_END
-            self.phase_timer = 0.1
-            self._debug_overlay = False
-
-    def _draw_debug_overlay(self, screen: pygame.Surface) -> None:
-        """Render semi-transparent debug overlay with hotkey hints."""
-        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 150))
-        screen.blit(overlay, (0, 0))
-
-        panel_w, panel_h = 340, 260
-        panel_x = SCREEN_WIDTH // 2 - panel_w // 2
-        panel_y = SCREEN_HEIGHT // 2 - panel_h // 2
-        pygame.draw.rect(
-            screen,
-            (20, 20, 50),
-            (panel_x, panel_y, panel_w, panel_h),
-            border_radius=10,
-        )
-        pygame.draw.rect(
-            screen,
-            AIR_FORCE_BLUE,
-            (panel_x, panel_y, panel_w, panel_h),
-            width=2,
-            border_radius=10,
-        )
-
-        title_font = get_font(20, "bold")
-        item_font = get_font(14)
-
-        title = title_font.render("🔧 인게임 디버그", True, WHITE)
-        screen.blit(
-            title, (panel_x + panel_w // 2 - title.get_width() // 2, panel_y + 12)
-        )
-
-        items = [
-            ("F1", "강제 패배 (게임 오버)"),
-            ("F2", "강제 승리"),
-            ("F3", "정산 화면으로 이동"),
-            ("F4", "위험도 +30"),
-            ("F5", "위험도 초기화"),
-            ("F6", "다음 라운드 스킵"),
+    def _get_game_debug_hotkeys(self) -> list[DebugHotkey]:
+        """Define in-game debug hotkeys."""
+        return [
+            DebugHotkey(pygame.K_F1, "강제 패배 (게임 오버)", self._debug_force_lose),
+            DebugHotkey(pygame.K_F2, "강제 승리", self._debug_force_win),
+            DebugHotkey(pygame.K_F3, "정산 화면으로 이동", self._go_to_result_scene),
+            DebugHotkey(pygame.K_F4, "위험도 +30", self._debug_add_danger),
+            DebugHotkey(pygame.K_F5, "위험도 초기화", self._debug_reset_danger),
+            DebugHotkey(pygame.K_F6, "다음 라운드 스킵", self._debug_skip_round),
         ]
 
-        for i, (hotkey, desc) in enumerate(items):
-            y = panel_y + 50 + i * 30
-            key_text = item_font.render(f"[{hotkey}]", True, DANGER_WARNING)
-            desc_text = item_font.render(f" {desc}", True, WHITE)
-            screen.blit(key_text, (panel_x + 20, y))
-            screen.blit(desc_text, (panel_x + 20 + key_text.get_width(), y))
+    def _debug_force_lose(self) -> None:
+        """Force game over — eliminate human player."""
+        from fall_in.core.game_manager import GameManager
+        from fall_in.config import GAME_OVER_SCORE
+        from fall_in.scenes.game_over_scene import GameOverScene
 
-        hint = item_font.render("[ESC/F12] 닫기", True, LIGHT_BLUE)
-        screen.blit(
-            hint,
-            (panel_x + panel_w // 2 - hint.get_width() // 2, panel_y + panel_h - 28),
+        self.human_player.penalty_score = GAME_OVER_SCORE + 1
+        self.human_player.is_eliminated = True
+        winner = next(
+            (p for p in self.players if not p.is_eliminated and p != self.human_player),
+            None,
         )
+        GameManager().change_scene(
+            GameOverScene(winner, self.players, self.rules.round_state.round_number)
+        )
+
+    def _debug_force_win(self) -> None:
+        """Force victory — eliminate all AI."""
+        from fall_in.core.game_manager import GameManager
+        from fall_in.config import GAME_OVER_SCORE
+        from fall_in.scenes.game_over_scene import GameOverScene
+
+        for p in self.players:
+            if p != self.human_player:
+                p.penalty_score = GAME_OVER_SCORE + 1
+                p.is_eliminated = True
+        GameManager().change_scene(
+            GameOverScene(
+                self.human_player, self.players, self.rules.round_state.round_number
+            )
+        )
+
+    def _debug_add_danger(self) -> None:
+        """Add 30 danger to player."""
+        pid = self.human_player.player_id
+        self.rules.committed_scores[pid] += 30
+        new_score = self.rules.committed_scores[pid]
+        self.message = f"[DEBUG] 위험도 +30 → {new_score}"
+        self.message_timer = 2.0
+        self.is_debug_active = False
+
+    def _debug_reset_danger(self) -> None:
+        """Reset danger to 0."""
+        pid = self.human_player.player_id
+        self.rules.committed_scores[pid] = 0
+        self.message = "[DEBUG] 위험도 초기화"
+        self.message_timer = 2.0
+        self.is_debug_active = False
+
+    def _debug_skip_round(self) -> None:
+        """Skip to next round."""
+        self.phase = GamePhase.ROUND_END
+        self.phase_timer = 0.1
+        self.is_debug_active = False
+
+    # ------------------------------------------------------------------
+    # Order announce animation
+    # ------------------------------------------------------------------
+
+    def _draw_order_announce(self, screen: pygame.Surface) -> None:
+        """Draw the player order popup with round title and shuffle/hold/shrink animation."""
+        order = self.rules.player_order
+        t = self._order_announce_timer
+        sub = self._order_announce_sub
+        round_num = self.rules.round_state.round_number
+
+        def _label(p: object) -> str:
+            return (
+                "나"
+                if p == self.human_player
+                else getattr(p, "name", "").replace("AI ", "")
+            )
+
+        def _color(p: object) -> tuple:
+            return DANGER_SAFE if p == self.human_player else LIGHT_BLUE
+
+        # Target position (UI bar order display)
+        target_x = UI_ELEMENT_PLAYER_ORDER_X
+        target_y = UI_TOP_BAR_Y + 59
+
+        # Center position
+        center_x = SCREEN_WIDTH // 2
+        center_y = SCREEN_HEIGHT // 2 - 50
+
+        # Compute interpolation factor and position
+        if sub == 2:  # shrink
+            frac = min(t / ORDER_ANNOUNCE_SHRINK_DURATION, 1.0)
+            frac = _ease_out_cubic(frac)
+            scale = 1.0 - frac * 0.6  # 1.0 -> 0.4
+            alpha = max(0, int(255 * (1.0 - frac)))
+            pos_x = center_x + (target_x - center_x) * frac
+            pos_y = center_y + (target_y - center_y) * frac
+        else:  # shuffle or hold
+            scale = 1.0
+            alpha = 255
+            pos_x = center_x
+            pos_y = center_y
+
+        # Reference font for size calculations
+        title_font_size = max(8, int(20 * scale))
+        order_font_size = max(8, int(18 * scale))
+        title_font = get_font(title_font_size, "bold")
+        order_font = get_font(order_font_size, "bold")
+
+        # Round title text
+        round_title = f"라운드 {round_num} 시작!"
+        title_surf = title_font.render(round_title, True, WHITE)
+
+        # Calculate order row width
+        labels = [_label(p) for p in order]
+        arrow_w = order_font.size(" → ")[0]
+        total_text_w = sum(order_font.size(lbl)[0] for lbl in labels)
+        total_text_w += arrow_w * (len(labels) - 1)
+
+        # Panel size (wider of title or order row, + padding)
+        content_w = max(title_surf.get_width(), total_text_w)
+        panel_w = int((content_w + 60) * scale)
+        panel_h = int(100 * scale)
+        if panel_w < 10 or panel_h < 10:
+            return
+
+        popup = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
+
+        # Panel background — use popup_message HUD asset if available
+        bg_alpha = min(alpha, 220)
+        if "popup_message" in self._hud_images:
+            popup_bg = pygame.transform.smoothscale(
+                self._hud_images["popup_message"], (panel_w, panel_h)
+            )
+            popup_bg.set_alpha(bg_alpha)
+            popup.blit(popup_bg, (0, 0))
+        else:
+            pygame.draw.rect(
+                popup,
+                (20, 30, 50, bg_alpha),
+                (0, 0, panel_w, panel_h),
+                border_radius=int(12 * scale),
+            )
+            pygame.draw.rect(
+                popup,
+                (*AIR_FORCE_BLUE, bg_alpha),
+                (0, 0, panel_w, panel_h),
+                width=max(1, int(2 * scale)),
+                border_radius=int(12 * scale),
+            )
+
+        # Line 1: "라운드 N 시작!"
+        title_y = int(12 * scale)
+        title_x = panel_w // 2 - title_surf.get_width() // 2
+        popup.blit(title_surf, (title_x, title_y))
+
+        # Line 2: Player order with arrows
+        name_y = int(55 * scale)
+
+        # During shuffle sub-phase for round >= 2, show flash animation
+        if sub == 0 and self._prev_order:
+            shuffle_t = min(t / ORDER_ANNOUNCE_SHUFFLE_DURATION, 1.0)
+            # Show old order first half, new order second half
+            display_order = self._prev_order if shuffle_t < 0.5 else order
+            # Flash effect
+            flash_val = abs(((shuffle_t * 6) % 2) - 1)
+            name_alpha = max(80, int(flash_val * 255))
+        else:
+            display_order = order
+            name_alpha = alpha
+
+        rendered_items: list[pygame.Surface] = []
+        row_w = 0
+        for i, p in enumerate(display_order):
+            lbl = _label(p)
+            col = _color(p)
+            txt = order_font.render(lbl, True, (*col[:3], name_alpha))
+            rendered_items.append(txt)
+            row_w += txt.get_width()
+            if i < len(display_order) - 1:
+                arrow = order_font.render(" → ", True, (*LIGHT_BLUE[:3], name_alpha))
+                rendered_items.append(arrow)
+                row_w += arrow.get_width()
+
+        # Center order row in panel
+        x_offset = (panel_w - row_w) // 2
+        for item in rendered_items:
+            popup.blit(item, (x_offset, name_y))
+            x_offset += item.get_width()
+
+        # Blit popup to screen
+        blit_x = int(pos_x) - panel_w // 2
+        blit_y = int(pos_y) - panel_h // 2
+        screen.blit(popup, (blit_x, blit_y))
+
+
+def _ease_out_cubic(t: float) -> float:
+    """Ease-out cubic for smooth deceleration."""
+    return 1 - (1 - t) ** 3

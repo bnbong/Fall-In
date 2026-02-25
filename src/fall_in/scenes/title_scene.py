@@ -204,7 +204,7 @@ class TitleScene(Scene):
             return
 
         from fall_in.core.game_manager import GameManager
-        from fall_in.scenes.debug_scene import DebugScene
+        from fall_in.scenes.title_debug_scene import DebugScene
 
         GameManager().change_scene(DebugScene())
 

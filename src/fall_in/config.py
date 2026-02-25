@@ -537,3 +537,10 @@ RESULT_TABLE_START_Y = 120
 GAME_OVER_BANNER_WIDTH_MAX = 600
 GAME_OVER_STATS_BOX_WIDTH = 400
 GAME_OVER_STATS_BOX_HEIGHT = 235
+
+# =============================================================================
+# Order Announce Animation Settings
+# =============================================================================
+ORDER_ANNOUNCE_SHUFFLE_DURATION = 0.6  # Dynamic reorder animation (round >= 2)
+ORDER_ANNOUNCE_HOLD_DURATION = 1.0  # Big popup shown at center
+ORDER_ANNOUNCE_SHRINK_DURATION = 0.5  # Shrink-to-corner animation
