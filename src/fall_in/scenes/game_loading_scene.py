@@ -48,6 +48,9 @@ class GameLoadingScene(Scene):
         self.timer = 0.0
         self.tip = get_random_tip()
 
+        from fall_in.core.audio_manager import AudioManager
+
+        AudioManager().stop_bgm()
         # Snapshot of previous scene (title) to show behind the closing door
         self._prev_screen = prev_screen
 

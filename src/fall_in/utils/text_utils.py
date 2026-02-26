@@ -30,15 +30,13 @@ def draw_outlined_text(
     """
     x, y = pos
 
-    # Draw outline (shadow in 4 directions)
+    # Draw outline by blitting at every offset in a grid for a smooth, connected look
     outline_surface = font.render(text, True, outline_color)
-    for dx, dy in [
-        (-outline_offset, -outline_offset),
-        (-outline_offset, outline_offset),
-        (outline_offset, -outline_offset),
-        (outline_offset, outline_offset),
-    ]:
-        screen.blit(outline_surface, (x + dx, y + dy))
+    for dx in range(-outline_offset, outline_offset + 1):
+        for dy in range(-outline_offset, outline_offset + 1):
+            if dx == 0 and dy == 0:
+                continue
+            screen.blit(outline_surface, (x + dx, y + dy))
 
     # Draw main text on top
     text_surface = font.render(text, True, color)

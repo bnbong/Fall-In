@@ -75,6 +75,11 @@ class ResultScene(Scene):
         for category in ("panels", "icons"):
             self._ui_images.update(AssetManifest.get_loaded(category))
 
+        # Stop game BGM (result scene may use its own BGM later)
+        from fall_in.core.audio_manager import AudioManager
+
+        AudioManager().stop_bgm()
+
     def _setup_buttons(self) -> None:
         """Setup continue/title buttons."""
         button_width = SCENE_BUTTON_WIDTH

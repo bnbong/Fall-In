@@ -269,6 +269,12 @@ COMMANDER_DANGER_THRESHOLDS = {
     55: "furious",
 }
 
+# Commander alt-expression reaction (danger 5 / danger 7 soldier placement)
+COMMANDER_REACTION_DURATION = 0.5  # seconds to show alt expression
+COMMANDER_RANDOM_DIALOGUE_MIN = 8.0  # min interval between random dialogues (seconds)
+COMMANDER_RANDOM_DIALOGUE_MAX = 20.0  # max interval between random dialogues (seconds)
+COMMANDER_RANDOM_DIALOGUE_DURATION = 3.0  # speech bubble visible duration (seconds)
+
 
 # =============================================================================
 # Game Board Settings
@@ -544,3 +550,29 @@ GAME_OVER_STATS_BOX_HEIGHT = 235
 ORDER_ANNOUNCE_SHUFFLE_DURATION = 0.6  # Dynamic reorder animation (round >= 2)
 ORDER_ANNOUNCE_HOLD_DURATION = 1.0  # Big popup shown at center
 ORDER_ANNOUNCE_SHRINK_DURATION = 0.5  # Shrink-to-corner animation
+
+# =============================================================================
+# Intro Cutscene Settings
+# =============================================================================
+CUTSCENE_IMAGES_DIR = IMAGES_DIR / "cutscenes"
+CUTSCENE_SLIDE_DURATION = 0.5  # Slide-in animation duration (seconds)
+CUTSCENE_SKIP_SPEED = 0.05  # Fast-forward speed when skipping (seconds per cut)
+CUTSCENE_BG_COLOR = (255, 255, 255)  # White background
+
+# Skip button (bottom-right corner)
+CUTSCENE_SKIP_BTN_X = SCREEN_WIDTH - 160
+CUTSCENE_SKIP_BTN_Y = SCREEN_HEIGHT - 60
+CUTSCENE_SKIP_BTN_WIDTH = 140
+CUTSCENE_SKIP_BTN_HEIGHT = 40
+
+# =============================================================================
+# Audio / BGM Settings
+# =============================================================================
+SOUNDS_DIR = PROJECT_ROOT / "assets" / "sounds"
+TITLE_BGM_PATH = "bgm/640일.wav"
+GAME_BGM_PATH = "bgm/공군가(고싶다).wav"
+
+# =============================================================================
+# Bug Report
+# =============================================================================
+GITHUB_ISSUES_URL = "https://github.com/bnbong/Fall-In/issues"

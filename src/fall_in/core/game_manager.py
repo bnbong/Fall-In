@@ -142,10 +142,10 @@ class GameManager:
             f"[AssetLoader] Pre-loaded {loaded} assets ({loader.preloaded_count} cached)"
         )
 
-        # Start with title scene
-        from fall_in.scenes.title_scene import TitleScene
+        # Start with intro cutscene scene
+        from fall_in.scenes.intro_cutscene_scene import IntroCutsceneScene
 
-        self.change_scene(TitleScene())
+        self.change_scene(IntroCutsceneScene())
 
     def change_scene(self, new_scene: "Scene") -> None:
         """Change to a new scene"""

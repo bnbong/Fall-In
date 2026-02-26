@@ -160,6 +160,15 @@ class GameScene(Scene, DebugOverlayMixin):
         # Commander (left side)
         self.commander = Commander()
 
+        # Settings popup
+        from fall_in.ui.settings_popup import SettingsPopup
+
+        self._settings_popup = SettingsPopup()
+
+        # Settings gear button (top-right corner)
+        self._settings_btn_center = (SCREEN_WIDTH - 30, 30)
+        self._settings_btn_radius = 18
+
         # Dust effect system
         self.dust_effect = DustEffect()
 
@@ -235,9 +244,14 @@ class GameScene(Scene, DebugOverlayMixin):
         # Start order announce overlay
         self._order_announce_timer = 0.0
         round_num = self.rules.round_state.round_number
-        # Round 1: skip shuffle, go straight to hold
+
         self._order_announce_sub = 0 if round_num > 1 else 1
         self.phase = GamePhase.ORDER_ANNOUNCE
+
+        from fall_in.core.audio_manager import AudioManager
+        from fall_in.config import GAME_BGM_PATH
+
+        AudioManager().play_bgm(GAME_BGM_PATH)
 
     def _start_dealing_animation_cards_only(self) -> None:
         """Setup dealing card tweens without changing the phase."""
@@ -933,16 +947,17 @@ class GameScene(Scene, DebugOverlayMixin):
 
     def handle_event(self, event: pygame.event.Event) -> None:
         """Handle pygame events."""
+        # Settings popup consumes events when visible
+        if self._settings_popup.handle_event(event):
+            return
+
         # Debug overlay handling (via mixin)
         if self.handle_debug_event(event):
             return
 
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
-                from fall_in.core.game_manager import GameManager
-                from fall_in.scenes.title_scene import TitleScene
-
-                GameManager().change_scene(TitleScene())
+                self._settings_popup.toggle()
                 return
             elif event.key == pygame.K_SPACE:
                 if (
@@ -950,6 +965,14 @@ class GameScene(Scene, DebugOverlayMixin):
                     and self.selected_card_index is not None
                 ):
                     self._confirm_card_selection()
+
+        if event.type == pygame.MOUSEBUTTONDOWN:
+            # Settings gear button click
+            mx, my = event.pos
+            sx, sy = self._settings_btn_center
+            if ((mx - sx) ** 2 + (my - sy) ** 2) ** 0.5 <= self._settings_btn_radius:
+                self._settings_popup.toggle()
+                return
 
         if self.phase == GamePhase.SELECTING:
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -1032,6 +1055,9 @@ class GameScene(Scene, DebugOverlayMixin):
         result = self.rules.execute_single_placement(player, card, order_idx)
         self.turn_log.append(result)
         self.current_placement = result
+
+        # Trigger commander reaction for high-danger soldiers (danger 5 / 7)
+        self.commander.react_to_soldier(result.card.danger)
 
         self.message = f"{result.player.name}: #{result.card.number}"
         self.message_timer = 1.0
@@ -1278,8 +1304,23 @@ class GameScene(Scene, DebugOverlayMixin):
             screen.blit(hint_bg, (hint_x - 8, hint_y - 3))
             screen.blit(hint, (hint_x, hint_y))
 
+        # Settings gear button (top-right)
+        sx, sy = self._settings_btn_center
+        pygame.draw.circle(
+            screen, (40, 50, 70, 200), (sx, sy), self._settings_btn_radius
+        )
+        pygame.draw.circle(
+            screen, AIR_FORCE_BLUE, (sx, sy), self._settings_btn_radius, 2
+        )
+        gear_font = get_font(18)
+        gear_text = gear_font.render("⚙", True, WHITE)
+        screen.blit(gear_text, gear_text.get_rect(center=(sx, sy)))
+
         # Debug overlay (via mixin)
         self.draw_debug_overlay(screen)
+
+        # Settings popup (always last — modal overlay)
+        self._settings_popup.render(screen)
 
     def _draw_turn_timer(self, screen: pygame.Surface) -> None:
         """Draw the turn timer with color-coded urgency."""

@@ -1,7 +1,5 @@
 """
 Title Scene - Game start screen
-
-# TODO : add title scene graphics. (before title, add story line explanation scene)
 """
 
 import pygame
@@ -9,6 +7,7 @@ import pygame
 from fall_in.scenes.base_scene import Scene
 from fall_in.ui.button import Button
 from fall_in.utils.asset_loader import get_font
+from fall_in.utils.text_utils import draw_outlined_text
 from fall_in.config import (
     SCREEN_WIDTH,
     SCREEN_HEIGHT,
@@ -20,6 +19,7 @@ from fall_in.config import (
     DEVELOPER_GITHUB,
     DEVELOPER_MILITARY,
     DEVELOPER_NICKNAME,
+    WHITE,
 )
 
 
@@ -33,13 +33,32 @@ class TitleScene(Scene):
         self.buttons: list[Button] = []
         self.show_dev_info = False  # Developer info popup state
 
+        # Settings popup
+        from fall_in.ui.settings_popup import SettingsPopup
+
+        self._settings_popup = SettingsPopup()
+
+        # Start title BGM
+        from fall_in.core.audio_manager import AudioManager
+        from fall_in.config import TITLE_BGM_PATH
+
+        AudioManager().play_bgm(TITLE_BGM_PATH)
+
         # Circular button positions (top-right corner)
+        self.intro_btn_center = (SCREEN_WIDTH - 150, 40)
         self.tutorial_btn_center = (SCREEN_WIDTH - 100, 40)
         self.info_btn_center = (SCREEN_WIDTH - 50, 40)
         self.circle_btn_radius = 18
 
         # Load developer profile image
         self.dev_profile_image = self._load_dev_profile_image()
+
+        # Load background and logo images
+        self._bg_image = self._load_and_scale_bg()
+        self._logo_image = self._load_logo()
+
+        # Breathing animation state
+        self._anim_timer: float = 0.0
 
         # UI images — pull from pre-loaded manifest cache
         from fall_in.utils.asset_manifest import AssetManifest
@@ -148,9 +167,8 @@ class TitleScene(Scene):
         game.change_scene(CollectionLoadingScene())
 
     def _on_settings(self) -> None:
-        """Settings callback"""
-        # TODO: Implement settings scene
-        print("Settings clicked")
+        """Settings callback — toggle settings popup"""
+        self._settings_popup.toggle()
 
     def _on_prestige(self) -> None:
         """Prestige/rebirth callback - goes to prestige confirmation scene"""
@@ -161,6 +179,10 @@ class TitleScene(Scene):
 
     def handle_event(self, event: pygame.event.Event) -> None:
         """Handle pygame events"""
+        # Settings popup consumes events when visible
+        if self._settings_popup.handle_event(event):
+            return
+
         # Close dev info popup on any click outside
         if self.show_dev_info:
             if event.type == pygame.MOUSEBUTTONDOWN:
@@ -173,6 +195,15 @@ class TitleScene(Scene):
         # Handle circular button clicks
         if event.type == pygame.MOUSEBUTTONDOWN:
             mouse_pos = pygame.mouse.get_pos()
+
+            # Intro replay button (🎬)
+            intro_dist = (
+                (mouse_pos[0] - self.intro_btn_center[0]) ** 2
+                + (mouse_pos[1] - self.intro_btn_center[1]) ** 2
+            ) ** 0.5
+            if intro_dist <= self.circle_btn_radius:
+                self._on_replay_intro()
+                return
 
             # Tutorial button (?)
             tutorial_dist = (
@@ -210,36 +241,102 @@ class TitleScene(Scene):
 
     def update(self, dt: float) -> None:
         """Update scene state"""
+        self._anim_timer += dt
         for button in self.buttons:
             button.update(dt)
 
+    @staticmethod
+    def _load_and_scale_bg() -> pygame.Surface | None:
+        """Load and scale the title background to screen size."""
+        try:
+            path = IMAGES_DIR / "ui" / "backgrounds" / "title.png"
+            if path.exists():
+                img = pygame.image.load(str(path)).convert()
+                return pygame.transform.smoothscale(img, (SCREEN_WIDTH, SCREEN_HEIGHT))
+        except Exception:
+            pass
+        return None
+
+    @staticmethod
+    def _load_logo() -> pygame.Surface | None:
+        """Load the game logo image."""
+        try:
+            path = IMAGES_DIR / "fall_in_logo.png"
+            if path.exists():
+                return pygame.image.load(str(path)).convert_alpha()
+        except Exception:
+            pass
+        return None
+
     def render(self, screen: pygame.Surface) -> None:
         """Render scene to screen"""
+        # Background image
+        if self._bg_image:
+            screen.blit(self._bg_image, (0, 0))
+
+        # Breathing animation: subtle pulse scale (1.0 ~ 1.03)
+        # pulse = 1.0 + 0.007 * math.sin(self._anim_timer * 2.0)
+        pulse = 1.0  # no pulse for now...
+
+        # Logo image
+        logo_center_y = SCREEN_HEIGHT // 3 - 100
+        if self._logo_image:
+            logo_w = int(self._logo_image.get_width() * 0.45 * pulse)
+            logo_h = int(self._logo_image.get_height() * 0.45 * pulse)
+            scaled_logo = pygame.transform.smoothscale(
+                self._logo_image, (logo_w, logo_h)
+            )
+            logo_rect = scaled_logo.get_rect(center=(SCREEN_WIDTH // 2, logo_center_y))
+            screen.blit(scaled_logo, logo_rect)
+
         # Use Korean fonts from asset loader
         font_large = get_font(64)
         font_sub = get_font(32)
         font_tagline = get_font(20)
 
-        # Main title
-        title_text = font_large.render("헤쳐 모여!", True, AIR_FORCE_BLUE)
-        title_rect = title_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 3))
-        screen.blit(title_text, title_rect)
+        # Title text (below logo)
+        text_base_y = logo_center_y + 140
 
-        # Subtitle
-        subtitle_text = font_sub.render("Fall In!", True, LIGHT_BLUE)
-        subtitle_rect = subtitle_text.get_rect(
-            center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 3 + 60)
+        # Main title — with white outline
+        title_surf = font_large.render("헤쳐 모여!", True, AIR_FORCE_BLUE)
+        title_rect = title_surf.get_rect(center=(SCREEN_WIDTH // 2, text_base_y))
+        draw_outlined_text(
+            screen,
+            "헤쳐 모여!",
+            font_large,
+            title_rect.topleft,
+            AIR_FORCE_BLUE,
+            WHITE,
+            outline_offset=3,
         )
-        screen.blit(subtitle_text, subtitle_rect)
 
-        # Tagline
-        tagline_text = font_tagline.render(
+        # Subtitle — with white outline
+        sub_surf = font_sub.render("Fall In!", True, LIGHT_BLUE)
+        sub_rect = sub_surf.get_rect(center=(SCREEN_WIDTH // 2, text_base_y + 60))
+        draw_outlined_text(
+            screen,
+            "Fall In!",
+            font_sub,
+            sub_rect.topleft,
+            LIGHT_BLUE,
+            WHITE,
+            outline_offset=2,
+        )
+
+        # Tagline — with white outline
+        tag_surf = font_tagline.render(
             "준비 된 인원부터 각 분대로 헤쳐모여!", True, AIR_FORCE_BLUE
         )
-        tagline_rect = tagline_text.get_rect(
-            center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 3 + 100)
+        tag_rect = tag_surf.get_rect(center=(SCREEN_WIDTH // 2, text_base_y + 100))
+        draw_outlined_text(
+            screen,
+            "준비 된 인원부터 각 분대로 헤쳐모여!",
+            font_tagline,
+            tag_rect.topleft,
+            AIR_FORCE_BLUE,
+            WHITE,
+            outline_offset=2,
         )
-        screen.blit(tagline_text, tagline_rect)
 
         # Draw buttons
         for button in self.buttons:
@@ -257,6 +354,9 @@ class TitleScene(Scene):
         # Draw developer info popup if visible
         if self.show_dev_info:
             self._draw_dev_info_popup(screen)
+
+        # Draw settings popup (always last — modal overlay)
+        self._settings_popup.render(screen)
 
     def _draw_medals(self, screen: pygame.Surface) -> None:
         """Draw earned medals in the top left corner"""
@@ -305,7 +405,19 @@ class TitleScene(Scene):
         screen.blit(prestige_text, rect)
 
     def _draw_circle_buttons(self, screen: pygame.Surface) -> None:
-        """Draw circular tutorial (?) and info (i) buttons in the top right corner"""
+        """Draw circular intro (🎬), tutorial (?), and info (i) buttons in the top right corner"""
+        # Intro replay button (🎬)
+        pygame.draw.circle(
+            screen, (200, 200, 200), self.intro_btn_center, self.circle_btn_radius
+        )
+        pygame.draw.circle(
+            screen, AIR_FORCE_BLUE, self.intro_btn_center, self.circle_btn_radius, 2
+        )
+        intro_font = get_font(16)
+        intro_text = intro_font.render("🎬", True, AIR_FORCE_BLUE)
+        intro_rect = intro_text.get_rect(center=self.intro_btn_center)
+        screen.blit(intro_text, intro_rect)
+
         # Tutorial button (?)
         pygame.draw.circle(
             screen, (200, 200, 200), self.tutorial_btn_center, self.circle_btn_radius
@@ -329,6 +441,13 @@ class TitleScene(Scene):
         info_text = info_font.render("i", True, AIR_FORCE_BLUE)
         info_rect = info_text.get_rect(center=self.info_btn_center)
         screen.blit(info_text, info_rect)
+
+    def _on_replay_intro(self) -> None:
+        """Replay intro cutscene"""
+        from fall_in.core.game_manager import GameManager
+        from fall_in.scenes.intro_cutscene_scene import IntroCutsceneScene
+
+        GameManager().change_scene(IntroCutsceneScene())
 
     def _draw_dev_info_popup(self, screen: pygame.Surface) -> None:
         """Draw developer information popup"""
