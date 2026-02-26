@@ -130,6 +130,9 @@ class GameManager:
 
         self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
         pygame.display.set_caption(GAME_TITLE)
+        icon = pygame.image.load("assets/images/fall_in_icon.png")
+        pygame.display.set_icon(icon)
+
         self.clock = pygame.time.Clock()
         self.running = True
 

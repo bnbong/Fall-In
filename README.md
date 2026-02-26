@@ -59,15 +59,44 @@
 - **Game Engine**: Pygame-CE
 - **Package Manager**: uv
 
+## 게임 규칙
+
+1. 각 플레이어는 10장의 카드(병사)를 받습니다
+2. 모든 플레이어가 동시에 1장씩 카드를 선택합니다
+3. 카드를 숫자 순서대로 4열 중 하나에 배치합니다
+4. 6번째 카드 배치 시, 해당 열의 위험도를 벌점으로 획득합니다
+5. 벌점으로 얻은 병사들의 위험도 합산이 66점 이상이면 탈락!
+
 ## 설치 및 실행
 
-### 의존성 설치
+### 웹에서 플레이하기
+
+사이트 링크 추가 예정
+
+### 로컬에 직접 설치
+
+<details>
+<summary><b>1. 릴리즈 버전 설치</b></summary>
+
+추가 예정
+
+1순위로 데스크톱 빌드, 그 다음으론 모바일 빌드 생각중
+
+</details>
+
+<br>
+
+<details>
+<summary><b>2. 최신 커밋 버전 설치 (with uv package manager)</b></summary>
+
+#### 의존성 설치
 
 ```bash
+# uv가 로컬에 설치되어있어야 함, 설치 가이드 : https://docs.astral.sh/uv/getting-started/installation/
 uv sync
 ```
 
-### 게임 실행
+#### 게임 실행
 
 ```bash
 uv run fall-in
@@ -78,6 +107,8 @@ uv run fall-in
 ```bash
 uv run python -m fall_in.main
 ```
+</details>
+
 
 ## 프로젝트 구조
 
@@ -98,10 +129,10 @@ fall_in/
 └── tests/                # 테스트 코드
 ```
 
-## 게임 규칙
 
-1. 각 플레이어는 10장의 카드(병사)를 받습니다
-2. 모든 플레이어가 동시에 1장씩 카드를 선택합니다
-3. 카드를 숫자 순서대로 4열 중 하나에 배치합니다
-4. 6번째 카드 배치 시, 해당 열의 위험도를 벌점으로 획득합니다
-5. 벌점으로 얻은 병사들의 위험도 합산이 66점 이상이면 탈락!
+## 라이선스
+
+소스코드 / 에셋 별로 보장되는 라이선스가 다릅니다.
+
+- Sources (src/ 폴더 및 하위 모든 파일) : [MIT License](./LICENSE.md)
+- Assets (assets/ 폴더 및 하위 모든 파일 - 이미지, 음악) : [CC BY-NC 4.0 License](./assets/LICENSE.md)

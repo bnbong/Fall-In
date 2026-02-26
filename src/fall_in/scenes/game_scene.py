@@ -166,7 +166,7 @@ class GameScene(Scene, DebugOverlayMixin):
         self._settings_popup = SettingsPopup()
 
         # Settings gear button (top-right corner)
-        self._settings_btn_center = (SCREEN_WIDTH - 30, 30)
+        self._settings_btn_center = (SCREEN_WIDTH - 230, 30)
         self._settings_btn_radius = 18
 
         # Dust effect system
