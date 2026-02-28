@@ -1,5 +1,5 @@
 {
-  "currency": 3000,
+  "currency": 3035,
   "prestige_count": 0,
   "profile": {
     "icon": "default",
@@ -9,7 +9,7 @@
   "coup_unlocked": false,
   "max_smuggle_count": 1,
   "win_count": 0,
-  "max_survived_rounds": 0,
+  "max_survived_rounds": 1,
   "bgm_volume": 0.7,
-  "sfx_volume": 0.7
+  "sfx_volume": 0.83
 }

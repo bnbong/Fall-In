@@ -262,6 +262,9 @@ class IntroCutsceneScene(Scene):
 
         if event.type == pygame.MOUSEBUTTONDOWN:
             if self._skip_btn_rect.collidepoint(event.pos):
+                from fall_in.core.audio_manager import AudioManager
+
+                AudioManager().play_sfx("sfx/back.wav")
                 self._phase = _Phase.DONE
                 return
 

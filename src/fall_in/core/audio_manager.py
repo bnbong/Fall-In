@@ -30,6 +30,7 @@ class AudioManager:
         self._current_bgm: str | None = None
         self._bgm_volume: float = 0.7
         self._sfx_volume: float = 0.7
+        self._sfx_cache: dict[str, pygame.mixer.Sound] = {}
 
         self._load_settings()
         pygame.mixer.music.set_volume(self._bgm_volume)
@@ -55,6 +56,24 @@ class AudioManager:
         """Stop BGM playback."""
         pygame.mixer.music.stop()
         self._current_bgm = None
+
+    # ------------------------------------------------------------------
+    # SFX
+    # ------------------------------------------------------------------
+
+    def play_sfx(self, path: str) -> None:
+        """Play a sound effect. Cached after first load."""
+        if self._sfx_volume <= 0:
+            return
+        try:
+            if path not in self._sfx_cache:
+                full_path = str(SOUNDS_DIR / path)
+                self._sfx_cache[path] = pygame.mixer.Sound(full_path)
+            sound = self._sfx_cache[path]
+            sound.set_volume(self._sfx_volume)
+            sound.play()
+        except Exception as e:
+            print(f"[AudioManager] Failed to play SFX '{path}': {e}")
 
     # ------------------------------------------------------------------
     # Volume

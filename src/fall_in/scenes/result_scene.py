@@ -6,7 +6,7 @@ import pygame
 
 from fall_in.scenes.base_scene import Scene
 from fall_in.ui.button import Button
-from fall_in.utils.asset_loader import get_font
+from fall_in.utils.asset_loader import AssetLoader, get_font
 from fall_in.utils.danger_utils import get_danger_color
 from fall_in.core.card import Card
 from fall_in.core.player import Player, PlayerType
@@ -14,7 +14,6 @@ from fall_in.core.rules import GameRules
 from fall_in.config import (
     SCREEN_WIDTH,
     SCREEN_HEIGHT,
-    AIR_FORCE_BLUE,
     WHITE,
     DANGER_SAFE,
     DANGER_WARNING,
@@ -74,6 +73,13 @@ class ResultScene(Scene):
         self._ui_images: dict[str, pygame.Surface] = {}
         for category in ("panels", "icons"):
             self._ui_images.update(AssetManifest.get_loaded(category))
+
+        # Load result background image directly
+        loader = AssetLoader()
+        raw_bg = loader.load_image("ui/backgrounds/result.png")
+        self._result_bg = pygame.transform.smoothscale(
+            raw_bg, (SCREEN_WIDTH, SCREEN_HEIGHT)
+        )
 
         # Stop game BGM (result scene may use its own BGM later)
         from fall_in.core.audio_manager import AudioManager
@@ -204,53 +210,29 @@ class ResultScene(Scene):
         font = get_font(20)
         small_font = get_font(16)
 
-        # Result table background panel
-        table_rect = pygame.Rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT)
-        if "panel_result_table" in self._ui_images:
-            raw = self._ui_images["panel_result_table"]
-            img_w, img_h = raw.get_size()
-            # Scale to fill screen width while preserving aspect ratio
-            scale = SCREEN_WIDTH / img_w
-            scaled_w = SCREEN_WIDTH
-            scaled_h = int(img_h * scale)
-            # If height exceeds screen, scale by height instead
-            if scaled_h > SCREEN_HEIGHT:
-                scale = SCREEN_HEIGHT / img_h
-                scaled_w = int(img_w * scale)
-                scaled_h = SCREEN_HEIGHT
-            table_bg = pygame.transform.smoothscale(raw, (scaled_w, scaled_h))
-            # Center on screen
-            bg_x = (SCREEN_WIDTH - scaled_w) // 2
-            bg_y = (SCREEN_HEIGHT - scaled_h) // 2
-            screen.blit(table_bg, (bg_x, bg_y))
-        else:
-            pygame.draw.rect(screen, WHITE, table_rect, border_radius=12)
-            pygame.draw.rect(
-                screen, AIR_FORCE_BLUE, table_rect, width=2, border_radius=12
-            )
+        # Full-screen result background
+        screen.blit(self._result_bg, (0, 0))
 
         # Title
-        title = title_font.render(
-            f"라운드 {self.round_number} 정산", True, AIR_FORCE_BLUE
-        )
+        title = title_font.render(f"라운드 {self.round_number} 정산", True, WHITE)
         title_rect = title.get_rect(center=(SCREEN_WIDTH // 2, 50))
         screen.blit(title, title_rect)
 
         # Table header
         start_y = RESULT_TABLE_START_Y
-        col_x = [150, 350, 500, 680]
+        col_x = [250, 450, 600, 780]
 
         headers = ["플레이어", "이번 라운드", "누적 위험도", "상태"]
         for i, header in enumerate(headers):
-            text = header_font.render(header, True, AIR_FORCE_BLUE)
+            text = header_font.render(header, True, WHITE)
             screen.blit(text, (col_x[i], start_y))
 
         # Divider
         pygame.draw.line(
             screen,
-            AIR_FORCE_BLUE,
-            (100, start_y + 35),
-            (SCREEN_WIDTH - 100, start_y + 35),
+            WHITE,
+            (200, start_y + 35),
+            (SCREEN_WIDTH - 200, start_y + 35),
             2,
         )
 
@@ -266,14 +248,12 @@ class ResultScene(Scene):
                 pygame.draw.rect(
                     screen,
                     (255, 200, 200),
-                    (100, row_y - 5, SCREEN_WIDTH - 200, row_height - 10),
+                    (200, row_y - 5, SCREEN_WIDTH - 400, row_height - 10),
                     border_radius=5,
                 )
 
             # Player name
-            screen.blit(
-                font.render(player.name, True, AIR_FORCE_BLUE), (col_x[0], row_y + 10)
-            )
+            screen.blit(font.render(player.name, True, WHITE), (col_x[0], row_y + 10))
 
             # Round penalty
             penalty_color = DANGER_DANGER if round_danger > 0 else DANGER_SAFE
@@ -303,15 +283,13 @@ class ResultScene(Scene):
                 )
             pygame.draw.rect(
                 screen,
-                AIR_FORCE_BLUE,
+                WHITE,
                 (col_x[2], row_y + 12, gauge_width, gauge_height),
                 width=1,
                 border_radius=3,
             )
 
-            total_text = small_font.render(
-                f"{total}/{GAME_OVER_SCORE}", True, AIR_FORCE_BLUE
-            )
+            total_text = small_font.render(f"{total}/{GAME_OVER_SCORE}", True, WHITE)
             screen.blit(total_text, (col_x[2] + gauge_width + 10, row_y + 12))
 
             # Status with badge icons
@@ -373,9 +351,7 @@ class ResultScene(Scene):
             button.render(screen)
 
         # Hint
-        hint_text = small_font.render(
-            "[SPACE] 또는 버튼 클릭으로 계속", True, AIR_FORCE_BLUE
-        )
+        hint_text = small_font.render("[SPACE] 또는 버튼 클릭으로 계속", True, WHITE)
         screen.blit(
             hint_text,
             (SCREEN_WIDTH // 2 - hint_text.get_width() // 2, SCREEN_HEIGHT - 30),

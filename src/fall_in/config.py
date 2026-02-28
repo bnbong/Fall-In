@@ -575,4 +575,4 @@ GAME_BGM_PATH = "bgm/공군가(고싶다).wav"
 # =============================================================================
 # Bug Report
 # =============================================================================
-GITHUB_ISSUES_URL = "https://github.com/bnbong/Fall-In/issues"
+GITHUB_ISSUES_URL = "https://github.com/bnbong/Fall-In/issues/new/choose"

@@ -174,34 +174,63 @@ class RecruitmentScene(Scene):
 
     def _handle_mouse_motion(self, pos: tuple[int, int]) -> None:
         """Update hover states"""
+        from fall_in.core.audio_manager import AudioManager
+
+        audio = AudioManager()
+        prev_roster = self.roster_hovered
+        prev_interview = self.interview_hovered
+        prev_confirm = self.confirm_hovered
+        prev_back = self.back_hovered
+        prev_title = self.title_hovered
+
         self.roster_hovered = self.btn_roster_rect.collidepoint(pos)
         self.interview_hovered = self.btn_interview_rect.collidepoint(pos)
         self.confirm_hovered = self.btn_confirm_rect.collidepoint(pos)
         self.back_hovered = self.btn_back_rect.collidepoint(pos)
         self.title_hovered = self.btn_title_rect.collidepoint(pos)
 
+        # Play cursor SFX on hover transitions
+        if (
+            (self.roster_hovered and not prev_roster)
+            or (self.interview_hovered and not prev_interview)
+            or (self.confirm_hovered and not prev_confirm)
+            or (self.back_hovered and not prev_back)
+            or (self.title_hovered and not prev_title)
+        ):
+            audio.play_sfx("sfx/cursor.wav")
+
     def _handle_click(self, pos: tuple[int, int]) -> None:
         """Handle mouse clicks"""
+        from fall_in.core.audio_manager import AudioManager
+
+        audio = AudioManager()
+
         if self.phase == RecruitPhase.INITIAL:
             if self.btn_title_rect.collidepoint(pos):
+                audio.play_sfx("sfx/back.wav")
                 self._handle_back()
             elif self.btn_roster_rect.collidepoint(pos):
+                audio.play_sfx("sfx/confirm.wav")
                 self._open_roster()
             elif self.btn_interview_rect.collidepoint(pos):
+                audio.play_sfx("sfx/confirm.wav")
                 self._start_interview()
 
         elif self.phase == RecruitPhase.INTERVIEW_DISPLAY:
             if self.btn_confirm_rect.collidepoint(pos):
+                audio.play_sfx("sfx/confirm.wav")
                 self._confirm_interview()
 
         elif self.phase == RecruitPhase.ROSTER_VIEW:
             if self.btn_back_rect.collidepoint(pos):
+                audio.play_sfx("sfx/back.wav")
                 self.phase = RecruitPhase.INITIAL
             else:
                 self._handle_roster_click(pos)
 
         elif self.phase == RecruitPhase.SOLDIER_DETAIL:
             if self.btn_back_rect.collidepoint(pos):
+                audio.play_sfx("sfx/back.wav")
                 self.phase = RecruitPhase.ROSTER_VIEW
 
     def _handle_scroll(self, direction: int) -> None:
@@ -263,6 +292,11 @@ class RecruitmentScene(Scene):
             self.element_alpha = 0
             # Set frozen food count based on soldier data
             self.frozen_food.set_count(self.current_soldier.frozen_food_count)
+
+            # Play door knock SFX at start of interview
+            from fall_in.core.audio_manager import AudioManager
+
+            AudioManager().play_sfx("sfx/door_knock.wav")
         else:
             self.toast_message = "모든 병사를 모집했습니다!"
             self.toast_timer = 2.0
@@ -271,6 +305,11 @@ class RecruitmentScene(Scene):
         """Confirm interview - soldier already collected at start"""
         self.phase = RecruitPhase.SOLDIER_LEAVING
         self.phase_timer = 0.0
+
+        # Play door close SFX after dismissing soldier
+        from fall_in.core.audio_manager import AudioManager
+
+        AudioManager().play_sfx("sfx/door_close.wav")
 
     def _handle_roster_click(self, pos: tuple[int, int]) -> None:
         """Handle click on roster grid"""
@@ -304,6 +343,9 @@ class RecruitmentScene(Scene):
                     self.selected_soldier_id = i
                     self.phase = RecruitPhase.SOLDIER_DETAIL
                 else:
+                    from fall_in.core.audio_manager import AudioManager
+
+                    AudioManager().play_sfx("sfx/error.wav")
                     self.toast_message = "아직 모르는 병사다"
                     self.toast_timer = 1.5
                 break
@@ -321,6 +363,11 @@ class RecruitmentScene(Scene):
             if self.phase_timer >= RECRUIT_ANNOUNCE_DURATION:
                 self.phase = RecruitPhase.SOLDIER_ENTERING
                 self.phase_timer = 0.0
+
+                # Play door open SFX when silhouette appears
+                from fall_in.core.audio_manager import AudioManager
+
+                AudioManager().play_sfx("sfx/door_open.wav")
 
         elif self.phase == RecruitPhase.SOLDIER_ENTERING:
             # Animate soldier zooming in (bottom-anchored)

@@ -291,6 +291,12 @@ class GameScene(Scene, DebugOverlayMixin):
             else:
                 all_complete = False
 
+        # Play card_draw SFX for each newly arrived card
+        if arrived_count > self.dealt_card_count:
+            from fall_in.core.audio_manager import AudioManager
+
+            AudioManager().play_sfx("sfx/card_draw.wav")
+
         self.dealt_card_count = arrived_count
 
         if all_complete and self.phase == GamePhase.DEALING:
@@ -1182,6 +1188,20 @@ class GameScene(Scene, DebugOverlayMixin):
                             self.dust_effect.spawn(
                                 iso_x, iso_y, figure.get_dust_count()
                             )
+                            # Play danger-level SFX on tile landing
+                            from fall_in.core.audio_manager import AudioManager
+
+                            danger = card.danger
+                            sfx_map = {
+                                1: "sfx/drop_danger_1.wav",
+                                2: "sfx/drop_danger_2.wav",
+                                3: "sfx/drop_danger_3.wav",
+                                5: "sfx/drop_danger_5.mp3",
+                                7: "sfx/drop_danger_7.mp3",
+                            }
+                            sfx_path = sfx_map.get(danger)
+                            if sfx_path:
+                                AudioManager().play_sfx(sfx_path)
                         if trigger_shake:
                             self.screen_shake_intensity = figure.get_shake_intensity()
                             self.screen_shake_timer = SCREEN_SHAKE_DURATION

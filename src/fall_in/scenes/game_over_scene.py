@@ -86,6 +86,14 @@ class GameOverScene(Scene):
         for category in ("banners", "panels", "icons"):
             self._ui_images.update(AssetManifest.get_loaded(category))
 
+        # Play win/lose SFX
+        from fall_in.core.audio_manager import AudioManager
+
+        if self.is_victory or self.is_coup_ending:
+            AudioManager().play_sfx("sfx/win.wav")
+        else:
+            AudioManager().play_sfx("sfx/lose.wav")
+
     def _check_coup_ending(self) -> bool:
         """
         Check if coup ending condition is met.

@@ -67,6 +67,7 @@ class Button:
 
         self.is_hovered = False
         self.is_pressed = False
+        self._was_hovered = False
 
         # Determine which image set to use
         if size_key == "auto":
@@ -106,6 +107,11 @@ class Button:
         """Handle mouse events"""
         if event.type == pygame.MOUSEMOTION:
             self.is_hovered = self.rect.collidepoint(event.pos)
+            if self.is_hovered and not self._was_hovered:
+                from fall_in.core.audio_manager import AudioManager
+
+                AudioManager().play_sfx("sfx/cursor.wav")
+            self._was_hovered = self.is_hovered
 
         elif event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1 and self.is_hovered:
@@ -114,6 +120,9 @@ class Button:
         elif event.type == pygame.MOUSEBUTTONUP:
             if event.button == 1 and self.is_pressed and self.is_hovered:
                 if self.callback:
+                    from fall_in.core.audio_manager import AudioManager
+
+                    AudioManager().play_sfx("sfx/confirm.wav")
                     self.callback()
             self.is_pressed = False
 
