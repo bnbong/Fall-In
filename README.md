@@ -84,8 +84,6 @@
 
 </details>
 
-<br>
-
 <details>
 <summary><b>2. 최신 커밋 버전 설치 (with uv package manager)</b></summary>
 

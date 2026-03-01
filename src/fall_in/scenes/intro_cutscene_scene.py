@@ -137,6 +137,20 @@ class IntroCutsceneScene(Scene):
             CUTSCENE_SKIP_BTN_HEIGHT,
         )
 
+        # Load cutscene panel SFX
+        from fall_in.config import SOUNDS_DIR
+
+        self._panel_sfx: pygame.mixer.Sound | None = None
+        try:
+            sfx_path = SOUNDS_DIR / "sfx" / "cutscene.wav"
+            if sfx_path.exists():
+                self._panel_sfx = pygame.mixer.Sound(str(sfx_path))
+                from fall_in.core.audio_manager import AudioManager
+
+                self._panel_sfx.set_volume(AudioManager().sfx_volume)
+        except Exception:
+            pass
+
     # ------------------------------------------------------------------
     # Asset loading
     # ------------------------------------------------------------------
@@ -292,6 +306,7 @@ class IntroCutsceneScene(Scene):
                 self._skip_timer -= CUTSCENE_SKIP_SPEED
                 if self._phase == _Phase.SLIDING_IN:
                     self._panel_reveal_count += 1
+                    self._play_panel_sfx()
                     self._timer = 0.0
                     if self._all_panels_revealed():
                         self._phase = _Phase.WAITING_INPUT
@@ -305,6 +320,7 @@ class IntroCutsceneScene(Scene):
             if self._timer >= CUTSCENE_SLIDE_DURATION:
                 self._timer = CUTSCENE_SLIDE_DURATION
                 self._panel_reveal_count += 1
+                self._play_panel_sfx()
 
                 if self._all_panels_revealed():
                     self._phase = _Phase.WAITING_INPUT
@@ -355,6 +371,11 @@ class IntroCutsceneScene(Scene):
             self._panel_reveal_count = 0
             self._phase = _Phase.SLIDING_IN
             self._timer = 0.0
+
+    def _play_panel_sfx(self) -> None:
+        """Play SFX when a new panel is revealed."""
+        if self._panel_sfx is not None:
+            self._panel_sfx.play()
 
     def _transition_to_title(self) -> None:
         from fall_in.core.game_manager import GameManager, GameState

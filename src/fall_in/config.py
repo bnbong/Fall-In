@@ -571,6 +571,7 @@ CUTSCENE_SKIP_BTN_HEIGHT = 40
 SOUNDS_DIR = PROJECT_ROOT / "assets" / "sounds"
 TITLE_BGM_PATH = "bgm/640일.wav"
 GAME_BGM_PATH = "bgm/공군가(고싶다).wav"
+COLLECTION_BGM_PATH = "bgm/위기는안일함속에찾아오는법.wav"
 
 # =============================================================================
 # Bug Report

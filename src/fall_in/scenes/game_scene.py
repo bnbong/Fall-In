@@ -169,6 +169,21 @@ class GameScene(Scene, DebugOverlayMixin):
         self._settings_btn_center = (SCREEN_WIDTH - 230, 30)
         self._settings_btn_radius = 18
 
+        # Timeout SFX (plays every second when timer <= 5)
+        from fall_in.config import SOUNDS_DIR
+
+        self._timeout_sfx: pygame.mixer.Sound | None = None
+        try:
+            sfx_path = SOUNDS_DIR / "sfx" / "timeout.wav"
+            if sfx_path.exists():
+                self._timeout_sfx = pygame.mixer.Sound(str(sfx_path))
+                from fall_in.core.audio_manager import AudioManager
+
+                self._timeout_sfx.set_volume(AudioManager().sfx_volume)
+        except Exception:
+            pass
+        self._last_timeout_tick: int = -1  # last second boundary we played SFX at
+
         # Dust effect system
         self.dust_effect = DustEffect()
 
@@ -1062,9 +1077,6 @@ class GameScene(Scene, DebugOverlayMixin):
         self.turn_log.append(result)
         self.current_placement = result
 
-        # Trigger commander reaction for high-danger soldiers (danger 5 / 7)
-        self.commander.react_to_soldier(result.card.danger)
-
         self.message = f"{result.player.name}: #{result.card.number}"
         self.message_timer = 1.0
 
@@ -1202,6 +1214,8 @@ class GameScene(Scene, DebugOverlayMixin):
                             sfx_path = sfx_map.get(danger)
                             if sfx_path:
                                 AudioManager().play_sfx(sfx_path)
+                            # Trigger commander reaction on landing
+                            self.commander.react_to_soldier(card.danger)
                         if trigger_shake:
                             self.screen_shake_intensity = figure.get_shake_intensity()
                             self.screen_shake_timer = SCREEN_SHAKE_DURATION
@@ -1240,7 +1254,14 @@ class GameScene(Scene, DebugOverlayMixin):
         # Turn timer during selection
         if self.phase == GamePhase.SELECTING:
             self.turn_timer -= dt
+            # Timeout SFX every second when <= 5s
+            if self.turn_timer <= 5.0 and self._timeout_sfx is not None:
+                current_tick = int(self.turn_timer)
+                if current_tick != self._last_timeout_tick and self.turn_timer > 0:
+                    self._last_timeout_tick = current_tick
+                    self._timeout_sfx.play()
             if self.turn_timer <= 0:
+                self._last_timeout_tick = -1
                 self._auto_select_card()
                 return
 

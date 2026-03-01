@@ -158,13 +158,26 @@ class TitleScene(Scene):
         """Developer info callback - shows developer information popup"""
         self.show_dev_info = True
 
-    def _on_collection(self) -> None:
-        """Collection callback — goes through loading screen"""
-        from fall_in.core.game_manager import GameManager
-        from fall_in.scenes.collection_loading_scene import CollectionLoadingScene
+    # Session-level flag: cutscene shown only once per game launch
+    _collection_cutscene_shown: bool = False
 
-        game = GameManager()
-        game.change_scene(CollectionLoadingScene())
+    def _on_collection(self) -> None:
+        """Collection callback — show cutscene first time, then go direct."""
+        from fall_in.core.game_manager import GameManager
+
+        if not TitleScene._collection_cutscene_shown:
+            TitleScene._collection_cutscene_shown = True
+            from fall_in.scenes.collection_cutscene_scene import (
+                CollectionCutsceneScene,
+            )
+
+            GameManager().change_scene(CollectionCutsceneScene())
+        else:
+            from fall_in.scenes.collection_loading_scene import (
+                CollectionLoadingScene,
+            )
+
+            GameManager().change_scene(CollectionLoadingScene())
 
     def _on_settings(self) -> None:
         """Settings callback — toggle settings popup"""
