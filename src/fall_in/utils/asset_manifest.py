@@ -57,6 +57,7 @@ ASSET_MANIFEST: dict[str, dict[str, str]] = {
         "panel_soldier_detail": "ui/panels/panel_soldier_detail.png",
         "panel_currency_info": "ui/panels/panel_currency_info.png",
         "panel_currency_info_sm": "ui/panels/panel_currency_info_sm.png",
+        "panel_player_info": "ui/panels/panel_player_info.png",
         "popup_dev_info": "ui/panels/popup_dev_info.png",
         "popup_message": "ui/panels/popup_message.png",
     },

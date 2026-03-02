@@ -96,8 +96,17 @@ class RecruitmentScene(Scene):
         from fall_in.utils.asset_manifest import AssetManifest
 
         self._ui_images: dict[str, pygame.Surface] = {}
-        for category in ("panels", "icons"):
+        for category in ("panels", "icons", "hud"):
             self._ui_images.update(AssetManifest.get_loaded(category))
+
+        # Player info popup
+        from fall_in.ui.player_info_popup import PlayerInfoPopup
+
+        self._player_info_popup = PlayerInfoPopup()
+
+        # Player profile icon (to the left of the notepad at bottom)
+        self.profile_btn_center = (480, 660)
+        self.profile_btn_radius = 24
 
         # State
         self.phase = RecruitPhase.INITIAL
@@ -159,6 +168,10 @@ class RecruitmentScene(Scene):
 
     def handle_event(self, event: pygame.event.Event) -> None:
         """Handle input events"""
+        # Player info popup consumes events when visible
+        if self._player_info_popup.handle_event(event):
+            return
+
         if event.type == pygame.MOUSEMOTION:
             self._handle_mouse_motion(event.pos)
         elif event.type == pygame.MOUSEBUTTONDOWN:
@@ -215,6 +228,13 @@ class RecruitmentScene(Scene):
             elif self.btn_interview_rect.collidepoint(pos):
                 audio.play_sfx("sfx/confirm.wav")
                 self._start_interview()
+            else:
+                # Player profile icon click
+                dx = pos[0] - self.profile_btn_center[0]
+                dy = pos[1] - self.profile_btn_center[1]
+                if (dx * dx + dy * dy) ** 0.5 <= self.profile_btn_radius:
+                    self._player_info_popup.toggle()
+                    return
 
         elif self.phase == RecruitPhase.INTERVIEW_DISPLAY:
             if self.btn_confirm_rect.collidepoint(pos):
@@ -434,6 +454,9 @@ class RecruitmentScene(Scene):
         if self.toast_timer > 0:
             self._render_toast(screen)
 
+        # Render player info popup (always last — modal overlay)
+        self._player_info_popup.render(screen)
+
     def _render_initial_buttons(self, screen: pygame.Surface) -> None:
         """Render initial state with two buttons"""
         font = get_font(16)
@@ -500,6 +523,53 @@ class RecruitmentScene(Scene):
             f"면담 비용: {INTERVIEW_COST}원", True, (100, 100, 100)
         )
         screen.blit(cost_text, (info_rect.x + 70, info_rect.y + 42))
+
+        # Player profile icon (near top-right, left of currency box)
+        self._draw_profile_icon(screen)
+
+    def _draw_profile_icon(self, screen: pygame.Surface) -> None:
+        """Draw player profile icon button."""
+        center = self.profile_btn_center
+        radius = self.profile_btn_radius
+
+        # Black background circle (prevents UI bleed-through)
+        pygame.draw.circle(screen, (0, 0, 0), center, radius)
+
+        # Draw portrait photo (player_portrait_unknown as default)
+        if "player_portrait_unknown" in self._ui_images:
+            avatar_size = radius * 2
+            portrait_img = pygame.transform.smoothscale(
+                self._ui_images["player_portrait_unknown"],
+                (avatar_size, avatar_size),
+            )
+            # Circular mask
+            mask = pygame.Surface((avatar_size, avatar_size), pygame.SRCALPHA)
+            pygame.draw.circle(
+                mask,
+                (255, 255, 255, 255),
+                (radius, radius),
+                radius,
+            )
+            portrait_img.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
+            screen.blit(portrait_img, (center[0] - radius, center[1] - radius))
+        else:
+            pygame.draw.circle(screen, (80, 100, 130), center, radius)
+            icon_font = get_font(20)
+            icon_text = icon_font.render("👤", True, WHITE)
+            screen.blit(icon_text, icon_text.get_rect(center=center))
+
+        # Draw border frame (player_avatar is the border asset)
+        if "player_avatar" in self._ui_images:
+            frame_size = radius * 2 + 6
+            frame_img = pygame.transform.smoothscale(
+                self._ui_images["player_avatar"], (frame_size, frame_size)
+            )
+            screen.blit(
+                frame_img,
+                (center[0] - frame_size // 2, center[1] - frame_size // 2),
+            )
+        else:
+            pygame.draw.circle(screen, AIR_FORCE_BLUE, center, radius, 2)
 
     def _render_announcement(self, screen: pygame.Surface) -> None:
         """Render speaker announcement"""

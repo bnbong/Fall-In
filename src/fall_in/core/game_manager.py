@@ -83,6 +83,17 @@ class GameManager:
         except Exception:
             self.currency = 0
 
+    def load_player_data(self) -> dict:
+        """Load full player data from saved JSON file."""
+        try:
+            data_path = self._get_data_path()
+            if data_path.exists():
+                with open(data_path, "r", encoding="utf-8") as f:
+                    return json.load(f)
+        except Exception:
+            pass
+        return {}
+
     def save_currency(self) -> None:
         """Save currency to data file, preserving other fields"""
         try:

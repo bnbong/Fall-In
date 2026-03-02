@@ -38,11 +38,20 @@ class TitleScene(Scene):
 
         self._settings_popup = SettingsPopup()
 
+        # Player info popup
+        from fall_in.ui.player_info_popup import PlayerInfoPopup
+
+        self._player_info_popup = PlayerInfoPopup()
+
         # Start title BGM
         from fall_in.core.audio_manager import AudioManager
         from fall_in.config import TITLE_BGM_PATH
 
         AudioManager().play_bgm(TITLE_BGM_PATH)
+
+        # Player profile icon (top-left corner)
+        self.profile_btn_center = (40, 40)
+        self.profile_btn_radius = 24
 
         # Circular button positions (top-right corner)
         self.intro_btn_center = (SCREEN_WIDTH - 150, 40)
@@ -64,7 +73,7 @@ class TitleScene(Scene):
         from fall_in.utils.asset_manifest import AssetManifest
 
         self._ui_images: dict[str, pygame.Surface] = {}
-        for category in ("panels", "icons"):
+        for category in ("panels", "icons", "hud"):
             self._ui_images.update(AssetManifest.get_loaded(category))
 
         self._setup_ui()
@@ -192,6 +201,10 @@ class TitleScene(Scene):
 
     def handle_event(self, event: pygame.event.Event) -> None:
         """Handle pygame events"""
+        # Player info popup consumes events when visible
+        if self._player_info_popup.handle_event(event):
+            return
+
         # Settings popup consumes events when visible
         if self._settings_popup.handle_event(event):
             return
@@ -208,6 +221,15 @@ class TitleScene(Scene):
         # Handle circular button clicks
         if event.type == pygame.MOUSEBUTTONDOWN:
             mouse_pos = pygame.mouse.get_pos()
+
+            # Player profile icon (top-left)
+            profile_dist = (
+                (mouse_pos[0] - self.profile_btn_center[0]) ** 2
+                + (mouse_pos[1] - self.profile_btn_center[1]) ** 2
+            ) ** 0.5
+            if profile_dist <= self.profile_btn_radius:
+                self._player_info_popup.toggle()
+                return
 
             # Intro replay button (🎬)
             intro_dist = (
@@ -355,8 +377,8 @@ class TitleScene(Scene):
         for button in self.buttons:
             button.render(screen)
 
-        # Draw medals (top left)
-        self._draw_medals(screen)
+        # Draw player profile icon (top left)
+        self._draw_profile_button(screen)
 
         # Draw prestige indicator (if any)
         self._draw_prestige_indicator(screen)
@@ -368,38 +390,54 @@ class TitleScene(Scene):
         if self.show_dev_info:
             self._draw_dev_info_popup(screen)
 
-        # Draw settings popup (always last — modal overlay)
+        # Draw settings popup (modal overlay)
         self._settings_popup.render(screen)
 
-    def _draw_medals(self, screen: pygame.Surface) -> None:
-        """Draw earned medals in the top left corner"""
-        from fall_in.core.medal_manager import MedalManager
+        # Draw player info popup (always last — modal overlay)
+        self._player_info_popup.render(screen)
 
-        medals = MedalManager().get_player_medals()
-        if not medals:
-            return
+    def _draw_profile_button(self, screen: pygame.Surface) -> None:
+        """Draw player profile icon button in the top left corner."""
+        center = self.profile_btn_center
+        radius = self.profile_btn_radius
+        # Black background circle (prevents UI bleed-through)
+        pygame.draw.circle(screen, (0, 0, 0), center, radius)
 
-        small_font = get_font(14)
-        x, y = 20, 20
-
-        # Title
-        title = small_font.render("🏅 획득 훈장", True, AIR_FORCE_BLUE)
-        screen.blit(title, (x, y))
-
-        # Medal icons (placeholder - simple text for now)
-        y += 25
-        medal_font = get_font(12)
-        for i, medal_id in enumerate(medals[:5]):  # Show max 5 medals
-            info = MedalManager().get_medal_info(medal_id)
-            if info:
-                medal_text = medal_font.render(f"• {info['name']}", True, (80, 80, 80))
-                screen.blit(medal_text, (x, y + i * 18))
-
-        if len(medals) > 5:
-            more_text = medal_font.render(
-                f"  +{len(medals) - 5} more", True, (120, 120, 120)
+        # Draw portrait photo (player_portrait_unknown as default)
+        if "player_portrait_unknown" in self._ui_images:
+            avatar_size = radius * 2
+            portrait_img = pygame.transform.smoothscale(
+                self._ui_images["player_portrait_unknown"],
+                (avatar_size, avatar_size),
             )
-            screen.blit(more_text, (x, y + 5 * 18))
+            # Circular mask
+            mask = pygame.Surface((avatar_size, avatar_size), pygame.SRCALPHA)
+            pygame.draw.circle(
+                mask,
+                (255, 255, 255, 255),
+                (radius, radius),
+                radius,
+            )
+            portrait_img.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
+            screen.blit(portrait_img, (center[0] - radius, center[1] - radius))
+        else:
+            pygame.draw.circle(screen, (80, 100, 130), center, radius)
+            icon_font = get_font(20)
+            icon_text = icon_font.render("👤", True, WHITE)
+            screen.blit(icon_text, icon_text.get_rect(center=center))
+
+        # Draw border frame (player_avatar is the border asset)
+        if "player_avatar" in self._ui_images:
+            frame_size = radius * 2 + 6
+            frame_img = pygame.transform.smoothscale(
+                self._ui_images["player_avatar"], (frame_size, frame_size)
+            )
+            screen.blit(
+                frame_img,
+                (center[0] - frame_size // 2, center[1] - frame_size // 2),
+            )
+        else:
+            pygame.draw.circle(screen, AIR_FORCE_BLUE, center, radius, 2)
 
     def _draw_prestige_indicator(self, screen: pygame.Surface) -> None:
         """Draw prestige count indicator"""

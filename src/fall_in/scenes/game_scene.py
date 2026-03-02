@@ -706,12 +706,19 @@ class GameScene(Scene, DebugOverlayMixin):
             avatar_radius = 25
             avatar_cx = p_rect.x + 8 + avatar_radius
             avatar_cy = p_rect.y + p_rect.height // 2
-            if "player_avatar" in self._hud_images:
+
+            # Black background circle
+            pygame.draw.circle(screen, (0, 0, 0), (avatar_cx, avatar_cy), avatar_radius)
+
+            # Portrait photo
+            from fall_in.utils.asset_manifest import AssetManifest
+
+            icons = AssetManifest.get_loaded("icons")
+            if "player_portrait_unknown" in icons:
                 avatar_size = avatar_radius * 2
-                avatar_img = pygame.transform.smoothscale(
-                    self._hud_images["player_avatar"], (avatar_size, avatar_size)
+                portrait_img = pygame.transform.smoothscale(
+                    icons["player_portrait_unknown"], (avatar_size, avatar_size)
                 )
-                # Circular mask
                 mask = pygame.Surface((avatar_size, avatar_size), pygame.SRCALPHA)
                 pygame.draw.circle(
                     mask,
@@ -719,20 +726,29 @@ class GameScene(Scene, DebugOverlayMixin):
                     (avatar_radius, avatar_radius),
                     avatar_radius,
                 )
-                avatar_img.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
+                portrait_img.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
                 screen.blit(
-                    avatar_img, (avatar_cx - avatar_radius, avatar_cy - avatar_radius)
+                    portrait_img, (avatar_cx - avatar_radius, avatar_cy - avatar_radius)
                 )
             else:
-                pygame.draw.circle(
-                    screen, (80, 100, 130), (avatar_cx, avatar_cy), avatar_radius
-                )
-                pygame.draw.circle(
-                    screen, WHITE, (avatar_cx, avatar_cy), avatar_radius, 2
-                )
                 avatar_icon = mini_font.render("👤", True, WHITE)
                 screen.blit(
                     avatar_icon, avatar_icon.get_rect(center=(avatar_cx, avatar_cy))
+                )
+
+            # Border frame (player_avatar)
+            if "player_avatar" in self._hud_images:
+                frame_size = avatar_radius * 2 + 6
+                frame_img = pygame.transform.smoothscale(
+                    self._hud_images["player_avatar"], (frame_size, frame_size)
+                )
+                screen.blit(
+                    frame_img,
+                    (avatar_cx - frame_size // 2, avatar_cy - frame_size // 2),
+                )
+            else:
+                pygame.draw.circle(
+                    screen, WHITE, (avatar_cx, avatar_cy), avatar_radius, 2
                 )
 
             # Text info (right of avatar)
@@ -844,19 +860,42 @@ class GameScene(Scene, DebugOverlayMixin):
         icon_y = top_y + 20
         icon_radius = 28
 
-        if "player_avatar" in self._hud_images:
-            avatar_size = icon_radius * 2
-            avatar_img = pygame.transform.smoothscale(
-                self._hud_images["player_avatar"], (avatar_size, avatar_size)
-            )
-            screen.blit(avatar_img, (icon_x - icon_radius, icon_y - icon_radius))
-        else:
-            pygame.draw.circle(screen, (80, 100, 130), (icon_x, icon_y), icon_radius)
-            pygame.draw.circle(screen, AIR_FORCE_BLUE, (icon_x, icon_y), icon_radius, 2)
+        # Black background circle (prevents UI bleed-through)
+        pygame.draw.circle(screen, (0, 0, 0), (icon_x, icon_y), icon_radius)
 
+        # Portrait photo (player_portrait_unknown)
+        from fall_in.utils.asset_manifest import AssetManifest
+
+        icons = AssetManifest.get_loaded("icons")
+        if "player_portrait_unknown" in icons:
+            avatar_size = icon_radius * 2
+            portrait_img = pygame.transform.smoothscale(
+                icons["player_portrait_unknown"], (avatar_size, avatar_size)
+            )
+            # Circular mask
+            mask = pygame.Surface((avatar_size, avatar_size), pygame.SRCALPHA)
+            pygame.draw.circle(
+                mask, (255, 255, 255, 255), (icon_radius, icon_radius), icon_radius
+            )
+            portrait_img.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
+            screen.blit(portrait_img, (icon_x - icon_radius, icon_y - icon_radius))
+        else:
             icon_font = get_font(18)
             icon_text = icon_font.render("👤", True, WHITE)
             screen.blit(icon_text, icon_text.get_rect(center=(icon_x, icon_y)))
+
+        # Border frame (player_avatar)
+        if "player_avatar" in self._hud_images:
+            frame_size = icon_radius * 2 + 6
+            frame_img = pygame.transform.smoothscale(
+                self._hud_images["player_avatar"], (frame_size, frame_size)
+            )
+            screen.blit(
+                frame_img,
+                (icon_x - frame_size // 2, icon_y - frame_size // 2),
+            )
+        else:
+            pygame.draw.circle(screen, AIR_FORCE_BLUE, (icon_x, icon_y), icon_radius, 2)
 
     def _get_phase_text(self) -> str:
         """Get current phase description in Korean."""
