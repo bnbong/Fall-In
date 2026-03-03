@@ -59,6 +59,9 @@ class SmugglingScene(Scene):
         self.smuggling.update_max_count()
         self.smuggling.start_new_selection()  # Clear any previous selection
 
+        # Cache collected IDs once to avoid per-frame JSON reads
+        self._collected_ids: set[int] = self.smuggling.get_collected_ids()
+
         # UI state
         self.hovered_card: Optional[Card] = None
         self.buttons: list[Button] = []
@@ -114,15 +117,16 @@ class SmugglingScene(Scene):
         from fall_in.core.game_manager import GameManager
 
         if self.is_game_over:
-            # Go to game over scene
-            from fall_in.scenes.game_over_scene import GameOverScene
+            # Play game over cutscene, then transition to GameOverScene
+            from fall_in.scenes.game_over_cutscene_scene import GameOverCutsceneScene
 
-            game_over_scene = GameOverScene(
-                winner=self.rules.winner,
-                players=self.rules.players,
-                round_number=self.rules.round_state.round_number,
+            GameManager().change_scene(
+                GameOverCutsceneScene(
+                    winner=self.rules.winner,
+                    players=self.rules.players,
+                    round_number=self.rules.round_state.round_number,
+                )
             )
-            GameManager().change_scene(game_over_scene)
         else:
             # Continue with next round
             from fall_in.scenes.game_scene import GameScene
@@ -273,7 +277,7 @@ class SmugglingScene(Scene):
 
         # Hover info - show warning if can't select
         if self.hovered_card:
-            is_collected = self.smuggling.is_soldier_collected(self.hovered_card.number)
+            is_collected = self.hovered_card.number in self._collected_ids
             if not is_collected:
                 hover_text = small_font.render(
                     "※ 면담하지 않은 병사는 빼돌릴 수 없습니다", True, DANGER_WARNING
@@ -329,7 +333,7 @@ class SmugglingScene(Scene):
             # Determine card state
             is_selected = self.smuggling.is_selected(card.number)
             is_hovered = card == self.hovered_card
-            is_collected = self.smuggling.is_soldier_collected(card.number)
+            is_collected = card.number in self._collected_ids
 
             # Lift selected/hovered cards
             if is_selected:

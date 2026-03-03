@@ -562,6 +562,7 @@ ORDER_ANNOUNCE_SHRINK_DURATION = 0.5  # Shrink-to-corner animation
 # Intro Cutscene Settings
 # =============================================================================
 CUTSCENE_IMAGES_DIR = IMAGES_DIR / "cutscenes"
+GAMEOVER_IMAGES_DIR = IMAGES_DIR / "gameover"
 CUTSCENE_SLIDE_DURATION = 0.5  # Slide-in animation duration (seconds)
 CUTSCENE_SKIP_SPEED = 0.05  # Fast-forward speed when skipping (seconds per cut)
 CUTSCENE_BG_COLOR = (255, 255, 255)  # White background

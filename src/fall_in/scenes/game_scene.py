@@ -249,6 +249,7 @@ class GameScene(Scene, DebugOverlayMixin):
         self.rules.start_new_round()
         self.turn_log.clear()
         self.placement_queue.clear()
+        self.soldier_figures.clear()
 
         committed = self.rules.get_player_committed_score(self.human_player)
         self.commander.set_expression_from_danger(committed)

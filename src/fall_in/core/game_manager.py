@@ -9,7 +9,14 @@ from typing import Optional, TYPE_CHECKING
 
 import pygame
 
-from fall_in.config import SCREEN_WIDTH, SCREEN_HEIGHT, FPS, GAME_TITLE, SAND_BEIGE
+from fall_in.config import (
+    SCREEN_WIDTH,
+    SCREEN_HEIGHT,
+    FPS,
+    GAME_TITLE,
+    SAND_BEIGE,
+    IMAGES_DIR,
+)
 
 if TYPE_CHECKING:
     from fall_in.scenes.base_scene import Scene
@@ -141,7 +148,8 @@ class GameManager:
 
         self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
         pygame.display.set_caption(GAME_TITLE)
-        icon = pygame.image.load("assets/images/fall_in_icon.png")
+        icon_path = IMAGES_DIR / "fall_in_icon.png"
+        icon = pygame.image.load(str(icon_path))
         pygame.display.set_icon(icon)
 
         self.clock = pygame.time.Clock()

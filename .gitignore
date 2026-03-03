@@ -33,6 +33,8 @@ ENV/
 .vscode/
 *.swp
 *.swo
+.codex/
+.claude/
 
 # OS
 .DS_Store

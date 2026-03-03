@@ -95,18 +95,21 @@ class SmugglingManager:
         except Exception:
             pass
 
-    def is_soldier_collected(self, soldier_id: int) -> bool:
-        """Check if a soldier has been collected (interviewed)"""
+    def get_collected_ids(self) -> set[int]:
+        """Return all collected soldier IDs (reads JSON once)."""
         try:
             path = DATA_DIR / self._COLLECTED_SOLDIERS_FILE
             if path.exists():
                 with open(path, "r", encoding="utf-8") as f:
                     data = json.load(f)
-                    collected_ids = set(data.get("collected_ids", []))
-                    return soldier_id in collected_ids
+                    return set(data.get("collected_ids", []))
         except Exception:
             pass
-        return False
+        return set()
+
+    def is_soldier_collected(self, soldier_id: int) -> bool:
+        """Check if a soldier has been collected (interviewed)"""
+        return soldier_id in self.get_collected_ids()
 
     def can_select(self, soldier_id: int) -> bool:
         """

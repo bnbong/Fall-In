@@ -147,10 +147,8 @@ class PlayerInfoPopup:
 
     def _get_medal_area_origin(self) -> tuple[int, int]:
         """Return (x, y) for the top-left of the medal grid."""
-        # Right portion of popup (60% area)
-        divider_x = self.rect.x + int(PLAYER_INFO_POPUP_WIDTH * 0.40)
-        medal_area_x = divider_x + 20
-        medal_area_y = self.rect.y + 75
+        medal_area_x = self.rect.x + int(PLAYER_INFO_POPUP_WIDTH * 0.55) - 75
+        medal_area_y = self.rect.y + int(PLAYER_INFO_POPUP_HEIGHT * 0.42) - 80
         return medal_area_x, medal_area_y
 
     # ------------------------------------------------------------------
@@ -171,6 +169,11 @@ class PlayerInfoPopup:
 
         # Popup background
         self._draw_background(screen)
+
+        # Popup border (outer steel-blue + inner gold accent)
+        pygame.draw.rect(screen, (80, 120, 170), self.rect, width=3, border_radius=14)
+        inner_rect = self.rect.inflate(-6, -6)
+        pygame.draw.rect(screen, (160, 130, 50), inner_rect, width=1, border_radius=11)
 
         # Close button (X)
         pygame.draw.rect(screen, (180, 60, 60), self._close_btn, border_radius=6)
@@ -395,9 +398,6 @@ class PlayerInfoPopup:
 
         # Section title
         medal_area_x, medal_area_y = self._get_medal_area_origin()
-        section_font = get_font(16, "bold")
-        section_title = section_font.render("🎖 획득 훈장", True, WHITE)
-        screen.blit(section_title, (medal_area_x, medal_area_y - 30))
 
         icon_font = get_font(20)
         lock_font = get_font(16)

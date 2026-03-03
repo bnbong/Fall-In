@@ -96,7 +96,9 @@ class AIPlayer:
         if target_row is None:
             # Must take a row - very bad
             # Score based on lowest row penalty we'd take
-            lowest_penalty = min(board.get_row_danger(i) for i in range(4))
+            lowest_penalty = min(
+                board.get_row_danger(i) for i in range(len(board.rows))
+            )
             return 100 + lowest_penalty
 
         # Check if this would be 6th card
@@ -155,7 +157,7 @@ class AIPlayer:
         # Additional factors for hard mode
 
         # Prefer saving high cards for later when rows are shorter
-        avg_row_size = sum(row_sizes) / 4
+        avg_row_size = sum(row_sizes) / len(row_sizes)
         if avg_row_size < 3:
             # Early game - prefer playing low/medium cards
             if card.number < 50:
@@ -187,7 +189,7 @@ class AIPlayer:
         min_penalty = float("inf")
         best_row = 0
 
-        for i in range(4):
+        for i in range(len(board.rows)):
             penalty = board.get_row_danger(i)
             if penalty < min_penalty:
                 min_penalty = penalty

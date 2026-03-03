@@ -46,17 +46,19 @@ class CollectionLoadingScene(Scene):
         # Target scene, built during LOADING phase
         self._target_scene: Scene | None = None
 
+        # Stop BGM once on entry (not every frame)
+        from fall_in.core.audio_manager import AudioManager
+
+        AudioManager().stop_bgm()
+
     def handle_event(self, event: pygame.event.Event) -> None:
         pass
 
     def update(self, dt: float) -> None:
-        from fall_in.core.audio_manager import AudioManager
-
         self.timer += dt
         self._angle += LOADING_SPINNER_SPEED * dt
 
         if self.phase == _Phase.LOADING:
-            AudioManager().stop_bgm()
             if self._target_scene is None and self.timer >= LOADING_SPINNER_LOAD_DELAY:
                 self._target_scene = self._build_scene()
 
@@ -71,6 +73,7 @@ class CollectionLoadingScene(Scene):
         elif self.phase == _Phase.DONE:
             if self._target_scene is not None:
                 from fall_in.core.game_manager import GameManager
+                from fall_in.core.audio_manager import AudioManager
                 from fall_in.config import COLLECTION_BGM_PATH
 
                 AudioManager().play_bgm(COLLECTION_BGM_PATH)
