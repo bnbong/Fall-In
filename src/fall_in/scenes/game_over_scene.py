@@ -86,9 +86,10 @@ class GameOverScene(Scene):
         for category in ("banners", "panels", "icons"):
             self._ui_images.update(AssetManifest.get_loaded(category))
 
-        # Play win/lose SFX
+        # Stop in-game BGM and play result SFX
         from fall_in.core.audio_manager import AudioManager
 
+        AudioManager().stop_bgm()
         if self.is_victory or self.is_coup_ending:
             AudioManager().play_sfx("sfx/win.wav")
         else:
@@ -193,13 +194,20 @@ class GameOverScene(Scene):
         )
 
     def _return_to_title(self) -> None:
-        """Return to title screen."""
+        """Return to title screen via loading animation."""
         from fall_in.core.game_manager import GameManager, GameState
+        from fall_in.scenes.game_loading_scene import GameLoadingScene
         from fall_in.scenes.title_scene import TitleScene
 
         game = GameManager()
         game.state = GameState.TITLE
-        game.change_scene(TitleScene())
+        prev_screen = game.screen.copy() if game.screen else None
+        game.change_scene(
+            GameLoadingScene(
+                prev_screen=prev_screen,
+                scene_builder=TitleScene,
+            )
+        )
 
     def handle_event(self, event: pygame.event.Event) -> None:
         """Handle events."""

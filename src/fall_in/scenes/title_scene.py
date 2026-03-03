@@ -393,6 +393,13 @@ class TitleScene(Scene):
         # Draw settings popup (modal overlay)
         self._settings_popup.render(screen)
 
+        # Build version string in bottom-left corner
+        from fall_in import __version__
+
+        ver_font = get_font(12)
+        ver_text = ver_font.render(f"v{__version__}", True, (120, 120, 130))
+        screen.blit(ver_text, (10, SCREEN_HEIGHT - ver_text.get_height() - 6))
+
         # Draw player info popup (always last — modal overlay)
         self._player_info_popup.render(screen)
 

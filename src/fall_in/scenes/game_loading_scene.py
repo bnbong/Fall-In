@@ -40,13 +40,18 @@ class GameLoadingScene(Scene):
     """
 
     def __init__(
-        self, difficulty: str = "normal", prev_screen: pygame.Surface | None = None
+        self,
+        difficulty: str = "normal",
+        prev_screen: pygame.Surface | None = None,
+        scene_builder=None,
     ):
         super().__init__()
         self.difficulty = difficulty
         self.phase = _Phase.CLOSING
         self.timer = 0.0
         self.tip = get_random_tip()
+        # Optional callable that builds the target scene (defaults to GameScene)
+        self._scene_builder = scene_builder
 
         from fall_in.core.audio_manager import AudioManager
 
@@ -135,8 +140,10 @@ class GameLoadingScene(Scene):
 
         elif self.phase == _Phase.LOADING:
             if self._target_scene is None and self.timer >= LOADING_DOOR_LOAD_DELAY:
-                # Construct the heavy GameScene now (blocks this frame)
-                self._target_scene = self._build_game_scene()
+                if self._scene_builder is not None:
+                    self._target_scene = self._scene_builder()
+                else:
+                    self._target_scene = self._build_game_scene()
 
             if self._target_scene is not None and self.timer >= LOADING_MIN_HOLD:
                 self.phase = _Phase.OPENING
