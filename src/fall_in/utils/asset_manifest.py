@@ -45,6 +45,8 @@ ASSET_MANIFEST: dict[str, dict[str, str]] = {
         "btn_small_pressed": "ui/buttons/btn_small_pressed.png",
         "btn_circle_normal": "ui/buttons/btn_circle_normal.png",
         "btn_circle_hover": "ui/buttons/btn_circle_hover.png",
+        "btn_close_normal": "ui/buttons/btn_close_normal.png",
+        "btn_close_hover": "ui/buttons/btn_close_hover.png",
     },
     # === Panels & Popups ===
     "panels": {
@@ -60,6 +62,7 @@ ASSET_MANIFEST: dict[str, dict[str, str]] = {
         "panel_player_info": "ui/panels/panel_player_info.png",
         "popup_dev_info": "ui/panels/popup_dev_info.png",
         "popup_message": "ui/panels/popup_message.png",
+        "panel_settings": "ui/panels/panel_settings.png",
     },
     # === Banners ===
     "banners": {
@@ -81,6 +84,10 @@ ASSET_MANIFEST: dict[str, dict[str, str]] = {
         "number_circle": "ui/icons/number_circle.png",
         "player_portrait_unknown": "ui/icons/player_portrait_unknown.png",
         "toast_bg": "ui/icons/toast_bg.png",
+        "icon_info": "ui/icons/icon_info.png",
+        "icon_replay": "ui/icons/icon_replay.png",
+        "icon_settings_gear": "ui/icons/icon_settings_gear.png",
+        "icon_tutorial": "ui/icons/icon_tutorial.png",
     },
     # === Speech Bubbles ===
     "speech": {

@@ -1387,15 +1387,21 @@ class GameScene(Scene, DebugOverlayMixin):
 
         # Settings gear button (top-right)
         sx, sy = self._settings_btn_center
-        pygame.draw.circle(
-            screen, (40, 50, 70, 200), (sx, sy), self._settings_btn_radius
-        )
-        pygame.draw.circle(
-            screen, AIR_FORCE_BLUE, (sx, sy), self._settings_btn_radius, 2
-        )
-        gear_font = get_font(18)
-        gear_text = gear_font.render("⚙", True, WHITE)
-        screen.blit(gear_text, gear_text.get_rect(center=(sx, sy)))
+        r = self._settings_btn_radius
+        from fall_in.utils.asset_manifest import AssetManifest
+
+        icon_imgs = AssetManifest.get_loaded("icons")
+        if "icon_settings_gear" in icon_imgs:
+            gear_icon = pygame.transform.smoothscale(
+                icon_imgs["icon_settings_gear"], (r * 2, r * 2)
+            )
+            screen.blit(gear_icon, (sx - r, sy - r))
+        else:
+            pygame.draw.circle(screen, (40, 50, 70, 200), (sx, sy), r)
+            pygame.draw.circle(screen, AIR_FORCE_BLUE, (sx, sy), r, 2)
+            gear_font = get_font(18)
+            gear_text = gear_font.render("⚙", True, WHITE)
+            screen.blit(gear_text, gear_text.get_rect(center=(sx, sy)))
 
         # Debug overlay (via mixin)
         self.draw_debug_overlay(screen)

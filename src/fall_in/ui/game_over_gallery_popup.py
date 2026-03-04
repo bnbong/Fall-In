@@ -235,11 +235,23 @@ class GameOverGalleryPopup:
             title.get_rect(centerx=self._rect.centerx, top=self._rect.top + 14),
         )
 
-        # Close button
-        pygame.draw.rect(screen, (180, 60, 60), self._close_btn, border_radius=6)
-        close_font = get_font(16, "bold")
-        x_text = close_font.render("✕", True, WHITE)
-        screen.blit(x_text, x_text.get_rect(center=self._close_btn.center))
+        # Close button — use btn_close image with hover state
+        from fall_in.utils.asset_manifest import AssetManifest
+
+        btn_imgs = AssetManifest.get_loaded("buttons")
+        is_hovered = self._close_btn.collidepoint(pygame.mouse.get_pos())
+        close_key = "btn_close_hover" if is_hovered else "btn_close_normal"
+        if close_key in btn_imgs:
+            close_img = pygame.transform.smoothscale(
+                btn_imgs[close_key],
+                (self._close_btn.width, self._close_btn.height),
+            )
+            screen.blit(close_img, self._close_btn.topleft)
+        else:
+            pygame.draw.rect(screen, (180, 60, 60), self._close_btn, border_radius=6)
+            close_font = get_font(16, "bold")
+            x_text = close_font.render("✕", True, WHITE)
+            screen.blit(x_text, x_text.get_rect(center=self._close_btn.center))
 
         if not self._seen_stems:
             # Empty state

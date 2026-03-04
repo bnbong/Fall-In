@@ -73,7 +73,7 @@ class TitleScene(Scene):
         from fall_in.utils.asset_manifest import AssetManifest
 
         self._ui_images: dict[str, pygame.Surface] = {}
-        for category in ("panels", "icons", "hud"):
+        for category in ("panels", "icons", "hud", "buttons"):
             self._ui_images.update(AssetManifest.get_loaded(category))
 
         self._setup_ui()
@@ -463,42 +463,30 @@ class TitleScene(Scene):
         screen.blit(prestige_text, rect)
 
     def _draw_circle_buttons(self, screen: pygame.Surface) -> None:
-        """Draw circular intro (🎬), tutorial (?), and info (i) buttons in the top right corner"""
-        # Intro replay button (🎬)
-        pygame.draw.circle(
-            screen, (200, 200, 200), self.intro_btn_center, self.circle_btn_radius
-        )
-        pygame.draw.circle(
-            screen, AIR_FORCE_BLUE, self.intro_btn_center, self.circle_btn_radius, 2
-        )
-        intro_font = get_font(16)
-        intro_text = intro_font.render("🎬", True, AIR_FORCE_BLUE)
-        intro_rect = intro_text.get_rect(center=self.intro_btn_center)
-        screen.blit(intro_text, intro_rect)
+        """Draw intro, tutorial, and info icon buttons in the top-right corner."""
+        mouse_pos = pygame.mouse.get_pos()
+        r = self.circle_btn_radius
+        size = r * 2  # 36×36
 
-        # Tutorial button (?)
-        pygame.draw.circle(
-            screen, (200, 200, 200), self.tutorial_btn_center, self.circle_btn_radius
-        )
-        pygame.draw.circle(
-            screen, AIR_FORCE_BLUE, self.tutorial_btn_center, self.circle_btn_radius, 2
-        )
-        tutorial_font = get_font(18, "bold")
-        tutorial_text = tutorial_font.render("?", True, AIR_FORCE_BLUE)
-        tutorial_rect = tutorial_text.get_rect(center=self.tutorial_btn_center)
-        screen.blit(tutorial_text, tutorial_rect)
+        def _draw_icon_btn(center: tuple, key: str, fallback: str) -> None:
+            if key in self._ui_images:
+                icon = pygame.transform.smoothscale(self._ui_images[key], (size, size))
+                screen.blit(icon, (center[0] - r, center[1] - r))
+            else:
+                # Fallback: filled circle + text
+                dist = (
+                    (mouse_pos[0] - center[0]) ** 2 + (mouse_pos[1] - center[1]) ** 2
+                ) ** 0.5
+                bg_color = (160, 170, 190) if dist <= r else (200, 200, 200)
+                pygame.draw.circle(screen, bg_color, center, r)
+                pygame.draw.circle(screen, AIR_FORCE_BLUE, center, r, 2)
+                fb_font = get_font(16, "bold")
+                fb_surf = fb_font.render(fallback, True, AIR_FORCE_BLUE)
+                screen.blit(fb_surf, fb_surf.get_rect(center=center))
 
-        # Info button (i)
-        pygame.draw.circle(
-            screen, (200, 200, 200), self.info_btn_center, self.circle_btn_radius
-        )
-        pygame.draw.circle(
-            screen, AIR_FORCE_BLUE, self.info_btn_center, self.circle_btn_radius, 2
-        )
-        info_font = get_font(18, "bold")
-        info_text = info_font.render("i", True, AIR_FORCE_BLUE)
-        info_rect = info_text.get_rect(center=self.info_btn_center)
-        screen.blit(info_text, info_rect)
+        _draw_icon_btn(self.intro_btn_center, "icon_replay", "🎬")
+        _draw_icon_btn(self.tutorial_btn_center, "icon_tutorial", "?")
+        _draw_icon_btn(self.info_btn_center, "icon_info", "i")
 
     def _on_replay_intro(self) -> None:
         """Replay intro cutscene"""

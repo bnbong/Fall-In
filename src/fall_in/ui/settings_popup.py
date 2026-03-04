@@ -212,29 +212,40 @@ class SettingsPopup:
 
         audio = AudioManager()
 
+        from fall_in.utils.asset_manifest import AssetManifest
+
+        ui = AssetManifest.get_loaded("panels")
+        btn_imgs = AssetManifest.get_loaded("buttons")
+
         # Dim overlay
         overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
         overlay.fill((0, 0, 0, 140))
         screen.blit(overlay, (0, 0))
 
-        # Popup background
-        popup_surf = pygame.Surface(
-            (self.POPUP_WIDTH, self.POPUP_HEIGHT), pygame.SRCALPHA
-        )
-        pygame.draw.rect(
-            popup_surf,
-            (30, 40, 60, 240),
-            (0, 0, self.POPUP_WIDTH, self.POPUP_HEIGHT),
-            border_radius=16,
-        )
-        pygame.draw.rect(
-            popup_surf,
-            AIR_FORCE_BLUE,
-            (0, 0, self.POPUP_WIDTH, self.POPUP_HEIGHT),
-            width=2,
-            border_radius=16,
-        )
-        screen.blit(popup_surf, self.rect.topleft)
+        # Popup background — use panel_settings image if available
+        if "panel_settings" in ui:
+            panel = pygame.transform.smoothscale(
+                ui["panel_settings"], (self.POPUP_WIDTH, self.POPUP_HEIGHT)
+            )
+            screen.blit(panel, self.rect.topleft)
+        else:
+            popup_surf = pygame.Surface(
+                (self.POPUP_WIDTH, self.POPUP_HEIGHT), pygame.SRCALPHA
+            )
+            pygame.draw.rect(
+                popup_surf,
+                (30, 40, 60, 240),
+                (0, 0, self.POPUP_WIDTH, self.POPUP_HEIGHT),
+                border_radius=16,
+            )
+            pygame.draw.rect(
+                popup_surf,
+                AIR_FORCE_BLUE,
+                (0, 0, self.POPUP_WIDTH, self.POPUP_HEIGHT),
+                width=2,
+                border_radius=16,
+            )
+            screen.blit(popup_surf, self.rect.topleft)
 
         # Title
         title_font = get_font(24, "bold")
@@ -244,11 +255,20 @@ class SettingsPopup:
             title.get_rect(centerx=self.rect.centerx, top=self.rect.top + 18),
         )
 
-        # Close button (X)
-        pygame.draw.rect(screen, (180, 60, 60), self._close_btn, border_radius=6)
-        close_font = get_font(16, "bold")
-        x_text = close_font.render("✕", True, WHITE)
-        screen.blit(x_text, x_text.get_rect(center=self._close_btn.center))
+        # Close button — use btn_close image with hover state
+        is_hovered = self._close_btn.collidepoint(pygame.mouse.get_pos())
+        close_key = "btn_close_hover" if is_hovered else "btn_close_normal"
+        if close_key in btn_imgs:
+            close_img = pygame.transform.smoothscale(
+                btn_imgs[close_key],
+                (self._close_btn.width, self._close_btn.height),
+            )
+            screen.blit(close_img, self._close_btn.topleft)
+        else:
+            pygame.draw.rect(screen, (180, 60, 60), self._close_btn, border_radius=6)
+            close_font = get_font(16, "bold")
+            x_text = close_font.render("✕", True, WHITE)
+            screen.blit(x_text, x_text.get_rect(center=self._close_btn.center))
 
         # BGM slider
         self._draw_slider(
