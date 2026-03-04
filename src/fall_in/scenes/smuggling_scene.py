@@ -117,11 +117,10 @@ class SmugglingScene(Scene):
         from fall_in.core.game_manager import GameManager
 
         if self.is_game_over:
-            # Play game over cutscene, then transition to GameOverScene
-            from fall_in.scenes.game_over_cutscene_scene import GameOverCutsceneScene
+            from fall_in.scenes.game_over_scene import GameOverScene
 
             GameManager().change_scene(
-                GameOverCutsceneScene(
+                GameOverScene(
                     winner=self.rules.winner,
                     players=self.rules.players,
                     round_number=self.rules.round_state.round_number,

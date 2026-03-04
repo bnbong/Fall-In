@@ -11,5 +11,6 @@
   "win_count": 0,
   "max_survived_rounds": 0,
   "bgm_volume": 0.7,
-  "sfx_volume": 0.7
+  "sfx_volume": 0.7,
+  "seen_endings": []
 }

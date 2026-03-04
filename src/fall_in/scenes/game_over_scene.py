@@ -22,6 +22,7 @@ from fall_in.config import (
     DANGER_DANGER,
     COUP_TITLE_COLOR,
     DATA_DIR,
+    GAMEOVER_IMAGES_DIR,
     REWARD_VICTORY_BASE,
     REWARD_VICTORY_PER_ROUND,
     REWARD_DEFEAT_BASE,
@@ -79,12 +80,36 @@ class GameOverScene(Scene):
         self.buttons: list[Button] = []
         self._setup_buttons()
 
-        # UI images — pull from pre-loaded manifest cache
+        # Determine ending scenario and load background image
+        from fall_in.core.ending_manager import EndingManager
+        from fall_in.core.smuggling_manager import SmugglingManager
         from fall_in.utils.asset_manifest import AssetManifest
 
+        smuggled = SmugglingManager().get_smuggled_soldiers()
+        self._scenario = EndingManager().determine_ending(self.is_victory, smuggled)
+
+        # Load background image from filesystem:
+        #   gameover/{result}/{result}_{bg_suffix}.png
+        result_str = "victory" if self.is_victory else "defeat"
+        bg_stem = f"{result_str}_{self._scenario.bg_suffix}"
+        self._bg_image: pygame.Surface | None = None
+        bg_path = GAMEOVER_IMAGES_DIR / result_str / f"{bg_stem}.png"
+        if bg_path.exists():
+            try:
+                raw = pygame.image.load(str(bg_path)).convert()
+                self._bg_image = pygame.transform.smoothscale(
+                    raw, (SCREEN_WIDTH, SCREEN_HEIGHT)
+                )
+            except Exception:
+                pass
+
+        # UI images — pull from pre-loaded manifest cache
         self._ui_images: dict[str, pygame.Surface] = {}
         for category in ("banners", "panels", "icons"):
             self._ui_images.update(AssetManifest.get_loaded(category))
+
+        # Record this ending as seen (store bg stem for gallery, e.g. "victory_bg")
+        self._record_seen_ending(bg_stem)
 
         # Stop in-game BGM and play result SFX
         from fall_in.core.audio_manager import AudioManager
@@ -130,6 +155,23 @@ class GameOverScene(Scene):
             is_victory=self.is_victory,
         )
         self.new_medals = newly_awarded
+
+    def _record_seen_ending(self, scenario_id: str) -> None:
+        """Add this ending scenario to the player's seen_endings list."""
+        try:
+            path = DATA_DIR / "player_data.json"
+            data = {}
+            if path.exists():
+                with open(path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+            seen: list[str] = data.get("seen_endings", [])
+            if scenario_id not in seen:
+                seen.append(scenario_id)
+                data["seen_endings"] = seen
+                with open(path, "w", encoding="utf-8") as f:
+                    json.dump(data, f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
 
     def _update_player_stats(self) -> None:
         """Update player statistics in player_data.json."""
@@ -235,10 +277,18 @@ class GameOverScene(Scene):
 
     def render(self, screen: pygame.Surface) -> None:
         """Render game over screen."""
+        self._draw_background(screen)
         if self.phase == self.PHASE_BANNER:
             self._render_banner_phase(screen)
         else:
             self._render_details_phase(screen)
+
+    def _draw_background(self, screen: pygame.Surface) -> None:
+        """Fill screen with scenario background image, or fallback solid color."""
+        if self._bg_image is not None:
+            screen.blit(self._bg_image, (0, 0))
+        else:
+            screen.fill((20, 30, 50))
 
     # ------------------------------------------------------------------
     # Phase 1: Banner only
@@ -279,7 +329,7 @@ class GameOverScene(Scene):
 
         # Result title + banner (top)
         title, title_color, banner_key = self._get_title_info()
-        self._draw_banner(screen, banner_key, y_center=80)
+        self._draw_banner(screen, banner_key, y_center=100)
 
         title_text = title_font.render(title, True, title_color)
         screen.blit(
@@ -290,7 +340,7 @@ class GameOverScene(Scene):
         # Stats box
         stats_rect = pygame.Rect(
             SCREEN_WIDTH // 2 - GAME_OVER_STATS_BOX_WIDTH // 2,
-            180,
+            350,
             GAME_OVER_STATS_BOX_WIDTH,
             GAME_OVER_STATS_BOX_HEIGHT,
         )
@@ -347,27 +397,6 @@ class GameOverScene(Scene):
             ),
             (stats_rect.x + 30, stats_y + 150),
         )
-
-        # Final rankings — only show on victory
-        if self.is_victory:
-            rankings_y = stats_rect.y + stats_rect.height + 30
-            rankings_title = header_font.render("최종 순위", True, AIR_FORCE_BLUE)
-            screen.blit(
-                rankings_title,
-                (SCREEN_WIDTH // 2 - rankings_title.get_width() // 2, rankings_y),
-            )
-
-            sorted_players = sorted(self.players, key=lambda p: p.penalty_score)
-            for i, player in enumerate(sorted_players):
-                rank_y = rankings_y + 40 + i * 30
-                screen.blit(
-                    font.render(
-                        f"{i + 1}. {player.name} - {player.penalty_score}점",
-                        True,
-                        AIR_FORCE_BLUE,
-                    ),
-                    (SCREEN_WIDTH // 2 - 100, rank_y),
-                )
 
         # Buttons
         for button in self.buttons:

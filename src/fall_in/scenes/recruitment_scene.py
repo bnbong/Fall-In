@@ -703,13 +703,13 @@ class RecruitmentScene(Scene):
         title_font = get_font(18, "bold")
         small_font = get_font(14)
 
-        y_offset = notes_rect.top + 15
+        y_offset = notes_rect.top + 30
 
         # Name and rank
         name_text = f"{self.current_soldier.name} {self.current_soldier.rank}"
         text = title_font.render(name_text, True, (30, 30, 30))
         text.set_alpha(self.element_alpha)
-        ui_surface.blit(text, (notes_rect.left + 15, y_offset))
+        ui_surface.blit(text, (notes_rect.left + 35, y_offset))
         y_offset += 30
 
         # Unit
@@ -717,14 +717,14 @@ class RecruitmentScene(Scene):
             f"소속: {self.current_soldier.unit}", True, (60, 60, 60)
         )
         text.set_alpha(self.element_alpha)
-        ui_surface.blit(text, (notes_rect.left + 15, y_offset))
+        ui_surface.blit(text, (notes_rect.left + 35, y_offset))
         y_offset += 25
 
         # Separator
         pygame.draw.line(
             ui_surface,
             (*self.PANEL_BORDER, self.element_alpha),
-            (notes_rect.left + 15, y_offset),
+            (notes_rect.left + 35, y_offset),
             (notes_rect.right - 15, y_offset),
             1,
         )
@@ -738,7 +738,7 @@ class RecruitmentScene(Scene):
         for line in note_lines[:max_note_lines]:
             text = small_font.render(line, True, (60, 60, 60))
             text.set_alpha(self.element_alpha)
-            ui_surface.blit(text, (notes_rect.left + 15, y_offset))
+            ui_surface.blit(text, (notes_rect.left + 35, y_offset))
             y_offset += line_height
 
         # Danger level
@@ -750,7 +750,7 @@ class RecruitmentScene(Scene):
             f"위험도: {self.current_soldier.danger}", True, danger_color
         )
         text.set_alpha(self.element_alpha)
-        ui_surface.blit(text, (notes_rect.left + 15, y_offset))
+        ui_surface.blit(text, (notes_rect.left + 35, y_offset))
 
         screen.blit(ui_surface, (0, 0))
 

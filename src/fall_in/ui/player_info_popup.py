@@ -35,6 +35,10 @@ class PlayerInfoPopup:
     PROFILE_BTN_WIDTH = 60
     PROFILE_BTN_HEIGHT = 22
 
+    # Gallery button dimensions
+    GALLERY_BTN_WIDTH = 90
+    GALLERY_BTN_HEIGHT = 22
+
     def __init__(self) -> None:
         self.visible = False
 
@@ -55,6 +59,18 @@ class PlayerInfoPopup:
         # UI images cache
         self._ui_images: dict[str, pygame.Surface] | None = None
         self._hud_images: dict[str, pygame.Surface] | None = None
+
+        # Game over gallery popup
+        from fall_in.ui.game_over_gallery_popup import GameOverGalleryPopup
+
+        self._gallery_popup = GameOverGalleryPopup()
+
+        # Gallery button rect (bottom-left area of popup)
+        gallery_x = self.rect.x + 10
+        gallery_y = self.rect.bottom - self.GALLERY_BTN_HEIGHT - 10
+        self._gallery_btn = pygame.Rect(
+            gallery_x, gallery_y, self.GALLERY_BTN_WIDTH, self.GALLERY_BTN_HEIGHT
+        )
 
     def _ensure_images_loaded(self) -> None:
         """Lazy-load UI images from the manifest cache."""
@@ -89,12 +105,21 @@ class PlayerInfoPopup:
         if not self.visible:
             return False
 
+        # Gallery popup takes priority when open
+        if self._gallery_popup.visible:
+            return self._gallery_popup.handle_event(event)
+
         if event.type == pygame.MOUSEBUTTONDOWN:
             pos = event.pos
 
             # Close button
             if self._close_btn.collidepoint(pos):
                 self.hide()
+                return True
+
+            # Gallery button
+            if self._gallery_btn.collidepoint(pos):
+                self._gallery_popup.show()
                 return True
 
             # Click inside popup = consume but do nothing
@@ -205,9 +230,23 @@ class PlayerInfoPopup:
         # Right side: medals
         self._draw_medals(screen)
 
+        # Gallery button (bottom-left of popup)
+        pygame.draw.rect(screen, (40, 60, 95), self._gallery_btn, border_radius=4)
+        pygame.draw.rect(
+            screen, LIGHT_BLUE, self._gallery_btn, width=1, border_radius=4
+        )
+        gallery_font = get_font(11)
+        gallery_text = gallery_font.render("🎬 보관함", True, WHITE)
+        screen.blit(
+            gallery_text, gallery_text.get_rect(center=self._gallery_btn.center)
+        )
+
         # Medal tooltip (drawn last, on top)
         if self._hovered_medal_idx is not None:
             self._draw_medal_tooltip(screen)
+
+        # Gallery popup (always rendered on top of everything)
+        self._gallery_popup.render(screen)
 
     def _draw_background(self, screen: pygame.Surface) -> None:
         """Draw popup background — uses asset image or fallback."""
