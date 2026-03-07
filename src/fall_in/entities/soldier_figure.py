@@ -1,18 +1,23 @@
 """
 Soldier Figure - Visual representation of a soldier on the isometric board.
 
-Supports sprite sheets with body-type-aware sizing, drop animation
+Supports single-frame sprite images with body-type-aware sizing, drop animation
 with easing, and triggers dust/shake effects on landing.
 
 Body Type System:
-- NORMAL: Standard soldier physique (default, 960×252 sprite sheets)
-- SMALL:  Petite soldiers (smaller display, TBD sprite sheets)
-- LARGE:  Bulky soldiers (wider display, e.g. 1020×252 sheets)
+- NORMAL: Standard soldier physique (default, ~240×252 single images)
+- SMALL:  Petite soldiers (smaller display)
+- LARGE:  Bulky soldiers (wider display)
+
+Idle animation applies a programmatic Y-offset bob over 4 steps
+(FIGURE_IDLE_Y_OFFSETS) so each sprite only needs a single frame image.
 
 Each figure instance determines its body type from the card data
 (explicit body_type field) or falls back to a danger-level mapping.
 """
 
+import math
+import time
 from typing import Optional
 
 import pygame
@@ -24,6 +29,7 @@ from fall_in.config import (
     WHITE,
     BodyType,
     FIGURE_SPRITE_FRAMES,
+    FIGURE_IDLE_Y_OFFSETS,
     FIGURE_DISPLAY_WIDTH,
     FIGURE_DISPLAY_HEIGHT,
     FIGURE_DROP_DURATION,
@@ -38,6 +44,11 @@ from fall_in.config import (
     FIGURE_BODY_TYPE_OFFSET_Y,
     FIGURE_BODY_TYPE_SHADOW_RADIUS,
     FIGURE_DANGER_BODY_TYPE,
+    FIGURE_AURA_COLORS,
+    FIGURE_AURA_RADIUS,
+    FIGURE_AURA_MAX_ALPHA,
+    FIGURE_AURA_PULSE_SPEED,
+    FIGURE_AURA_LAYERS,
     DUST_PARTICLE_COUNT,
     SCREEN_SHAKE_INTENSITY,
 )
@@ -84,20 +95,20 @@ class SoldierFigure:
     Visual representation of a soldier card on the isometric board.
 
     Sprite frames are cached in two layers:
-    - Raw frames: original resolution extracted from sprite sheets.
-    - Scaled frames: resized to body-type-specific display dimensions.
+    - Raw sprites: original resolution single-frame images.
+    - Scaled sprites: resized to body-type-specific display dimensions.
     """
 
     # --- Class-level sprite caches ---
-    # Raw (unscaled) mob sprite frames: {danger_level: [raw_frames]}
-    _raw_mob_sprites: dict[int, list[pygame.Surface]] = {}
-    # Scaled mob sprites: {(danger_level, body_type): [scaled_frames]}
-    _scaled_mob_cache: dict[tuple[int, str], list[pygame.Surface]] = {}
+    # Raw (unscaled) mob sprites: {danger_level: raw_surface}
+    _raw_mob_sprites: dict[int, pygame.Surface] = {}
+    # Scaled mob sprites: {(danger_level, body_type): scaled_surface}
+    _scaled_mob_cache: dict[tuple[int, str], pygame.Surface] = {}
 
-    # Raw individual soldier sprites: {soldier_id: [raw_frames]}
-    _raw_soldier_sprites: dict[int, list[pygame.Surface]] = {}
-    # Scaled individual sprites: {(soldier_id, body_type): [scaled_frames]}
-    _scaled_soldier_cache: dict[tuple[int, str], list[pygame.Surface]] = {}
+    # Raw individual soldier sprites: {soldier_id: raw_surface}
+    _raw_soldier_sprites: dict[int, pygame.Surface] = {}
+    # Scaled individual sprites: {(soldier_id, body_type): scaled_surface}
+    _scaled_soldier_cache: dict[tuple[int, str], pygame.Surface] = {}
 
     _initialized: bool = False
     _loader: Optional[AssetLoader] = None
@@ -108,7 +119,7 @@ class SoldierFigure:
 
     @classmethod
     def initialize(cls) -> None:
-        """Load and cache raw mob sprite sheets for each danger level."""
+        """Load and cache raw mob sprites for each danger level."""
         if cls._initialized:
             return
 
@@ -117,44 +128,17 @@ class SoldierFigure:
         for danger in [1, 2, 3, 5, 7]:
             try:
                 sprite_path = f"sprites/figure_mob_danger_{danger}.png"
-                sheet = cls._loader.load_image(sprite_path)
-                raw_frames = cls._extract_raw_frames(sheet)
-                cls._raw_mob_sprites[danger] = raw_frames
+                raw = cls._loader.load_image(sprite_path)
+                cls._raw_mob_sprites[danger] = raw
             except Exception:
                 pass
 
         cls._initialized = True
 
     @classmethod
-    def _extract_raw_frames(cls, sheet: pygame.Surface) -> list[pygame.Surface]:
-        """Extract animation frames from a horizontal sprite sheet (no scaling)."""
-        sheet_width = sheet.get_width()
-        sheet_height = sheet.get_height()
-        frame_width = sheet_width // FIGURE_SPRITE_FRAMES
-
-        frames = []
-        for i in range(FIGURE_SPRITE_FRAMES):
-            frame_rect = pygame.Rect(i * frame_width, 0, frame_width, sheet_height)
-            frame = sheet.subsurface(frame_rect).copy()
-            frames.append(frame)
-
-        return frames
-
-    @classmethod
-    def _scale_frames(
-        cls, raw_frames: list[pygame.Surface], width: int, height: int
-    ) -> list[pygame.Surface]:
-        """Scale a list of raw frames to the given dimensions."""
-        return [
-            pygame.transform.smoothscale(frame, (width, height)) for frame in raw_frames
-        ]
-
-    @classmethod
-    def _get_mob_frames(
-        cls, danger: int, body_type: str
-    ) -> Optional[list[pygame.Surface]]:
+    def _get_mob_sprite(cls, danger: int, body_type: str) -> Optional[pygame.Surface]:
         """
-        Get scaled mob sprite frames for a danger level and body type.
+        Get scaled mob sprite for a danger level and body type.
         Uses two-layer caching: raw -> scaled.
         """
         cls.initialize()
@@ -163,14 +147,13 @@ class SoldierFigure:
         if cache_key in cls._scaled_mob_cache:
             return cls._scaled_mob_cache[cache_key]
 
-        # Find the best matching raw frames
         danger_key = cls._resolve_danger_key(danger)
         if danger_key is None:
             return None
 
-        raw_frames = cls._raw_mob_sprites[danger_key]
+        raw = cls._raw_mob_sprites[danger_key]
         width, height = _get_display_dimensions(body_type)
-        scaled = cls._scale_frames(raw_frames, width, height)
+        scaled = pygame.transform.smoothscale(raw, (width, height))
         cls._scaled_mob_cache[cache_key] = scaled
         return scaled
 
@@ -206,58 +189,53 @@ class SoldierFigure:
     @classmethod
     def _load_soldier_sprite(
         cls, soldier_id: int, body_type: str
-    ) -> Optional[list[pygame.Surface]]:
+    ) -> Optional[pygame.Surface]:
         """Lazy load and scale individual soldier sprite."""
         cache_key = (soldier_id, body_type)
         if cache_key in cls._scaled_soldier_cache:
             return cls._scaled_soldier_cache[cache_key]
 
-        # Check raw cache first
         if soldier_id not in cls._raw_soldier_sprites:
             if cls._loader is None:
                 cls._loader = AssetLoader()
 
             try:
                 sprite_path = f"sprites/figure_soldier_{soldier_id}.png"
-                sheet = cls._loader.load_image(sprite_path)
-                raw_frames = cls._extract_raw_frames(sheet)
-                cls._raw_soldier_sprites[soldier_id] = raw_frames
+                raw = cls._loader.load_image(sprite_path)
+                cls._raw_soldier_sprites[soldier_id] = raw
             except Exception:
                 return None
 
-        raw_frames = cls._raw_soldier_sprites[soldier_id]
+        raw = cls._raw_soldier_sprites[soldier_id]
         width, height = _get_display_dimensions(body_type)
-        scaled = cls._scale_frames(raw_frames, width, height)
+        scaled = pygame.transform.smoothscale(raw, (width, height))
         cls._scaled_soldier_cache[cache_key] = scaled
         return scaled
 
     @classmethod
     def get_sprite_for_danger(
-        cls, danger: int, frame: int, body_type: str = BodyType.NORMAL
+        cls, danger: int, body_type: str = BodyType.NORMAL
     ) -> Optional[pygame.Surface]:
-        """Get a single sprite frame for a danger level and body type."""
-        frames = cls._get_mob_frames(danger, body_type)
-        if frames:
-            return frames[frame % len(frames)]
-        return None
+        """Get sprite for a danger level and body type."""
+        return cls._get_mob_sprite(danger, body_type)
 
     @classmethod
     def get_sprite_for_card(
-        cls, card: Card, frame: int, body_type: Optional[str] = None
+        cls, card: Card, body_type: Optional[str] = None
     ) -> Optional[pygame.Surface]:
         """
-        Get a single sprite frame for a card.
+        Get sprite for a card.
         Uses individual soldier sprite if collected, mob sprite otherwise.
         """
         cls.initialize()
         bt = body_type or _determine_body_type(card)
 
         if card.is_collected:
-            frames = cls._load_soldier_sprite(card.number, bt)
-            if frames:
-                return frames[frame % len(frames)]
+            sprite = cls._load_soldier_sprite(card.number, bt)
+            if sprite:
+                return sprite
 
-        return cls.get_sprite_for_danger(card.danger, frame, bt)
+        return cls.get_sprite_for_danger(card.danger, bt)
 
     # ------------------------------------------------------------------
     # Instance: per-figure animation and rendering
@@ -359,9 +337,11 @@ class SoldierFigure:
         drop_offset = self.get_current_y_offset()
         figure_y -= drop_offset
 
-        sprite = self.get_sprite_for_card(
-            self.card, self.animation_frame, self.body_type
-        )
+        # Apply idle bob when fully landed
+        if self.has_landed and not self.is_dropping:
+            figure_y += FIGURE_IDLE_Y_OFFSETS[self.animation_frame]
+
+        sprite = self.get_sprite_for_card(self.card, self.body_type)
         adjusted_iso_x = iso_x + self.offset_x
 
         if sprite:
@@ -371,12 +351,46 @@ class SoldierFigure:
                 )
                 self._draw_shadow(screen, adjusted_iso_x, iso_y, shadow_alpha)
 
+            if self.has_landed and not self.is_dropping:
+                self._draw_aura(screen, adjusted_iso_x, figure_y)
+
             sprite_x = adjusted_iso_x - self.display_width // 2
             screen.blit(sprite, (sprite_x, figure_y))
         else:
             self._render_placeholder(screen, adjusted_iso_x, figure_y, tile_height)
 
         self._draw_number(screen, adjusted_iso_x, figure_y)
+
+    def _draw_aura(self, screen: pygame.Surface, iso_x: int, figure_y: int) -> None:
+        """Draw pulsing semi-transparent aura behind the figure based on danger level."""
+        danger = self.card.danger
+        if danger not in FIGURE_AURA_COLORS:
+            return  # Danger 1 = no aura
+
+        color = FIGURE_AURA_COLORS[danger]
+        base_radius = FIGURE_AURA_RADIUS[danger]
+        max_alpha = FIGURE_AURA_MAX_ALPHA[danger]
+
+        # Pulse: radius varies ±15% over time
+        pulse = 0.5 + 0.5 * math.sin(
+            time.time() * FIGURE_AURA_PULSE_SPEED * math.pi * 2
+        )
+        effective_radius = base_radius + int(pulse * base_radius * 0.15)
+
+        # Center: horizontally centered, at ~55% down the figure height (body center)
+        center_x = iso_x
+        center_y = figure_y + int(self.display_height * 0.55)
+
+        # Draw concentric ellipses outer → inner (inner composites on top = brighter core)
+        for i in range(FIGURE_AURA_LAYERS, 0, -1):
+            ratio = i / FIGURE_AURA_LAYERS  # 1.0 → 0.67 → 0.33
+            r_w = int(effective_radius * ratio)
+            r_h = max(1, int(r_w * 0.6))  # ellipse (slightly flat for isometric feel)
+            alpha = int(max_alpha * (1.0 - ratio * 0.55) * (0.6 + 0.4 * pulse))
+
+            surf = pygame.Surface((r_w * 2, r_h * 2), pygame.SRCALPHA)
+            pygame.draw.ellipse(surf, (*color, alpha), (0, 0, r_w * 2, r_h * 2))
+            screen.blit(surf, (center_x - r_w, center_y - r_h))
 
     def _draw_shadow(
         self, screen: pygame.Surface, iso_x: int, iso_y: int, alpha: int = 255

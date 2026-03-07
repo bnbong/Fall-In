@@ -30,13 +30,13 @@ class TestCalculateDanger:
 
     def test_double_digit_cards_have_danger_5(self):
         """Double digit cards (11, 22, ..., 99) should have danger 5"""
-        numbers = [11, 22, 33, 44, 66, 77, 88, 99]
+        numbers = [11, 22, 33, 44, 55, 77, 88, 99]
         for number in numbers:
             assert calculate_danger(number) == 5, f"Card {number} should have danger 5"
 
-    def test_card_55_has_danger_7(self):
-        """Card 55 should have danger 7 (double + ends in 5)"""
-        assert calculate_danger(55) == 7
+    def test_card_66_has_danger_7(self):
+        """Card 66 should have danger 7 (special override)"""
+        assert calculate_danger(66) == 7
 
 
 class TestCard:
@@ -73,8 +73,8 @@ class TestCard:
 
     def test_card_equality(self):
         """Test card equality by number"""
-        card1 = Card(number=55, danger=7)
-        card2 = Card(number=55, danger=7)
+        card1 = Card(number=66, danger=7)
+        card2 = Card(number=66, danger=7)
         card3 = Card(number=56, danger=1)
 
         assert card1 == card2
@@ -120,7 +120,7 @@ class TestDeck:
         # 2-danger cards (5,15,25,35,45,65,75,85,95): 9 * 2 = 18
         # 3-danger cards (10,20,30,40,50,60,70,80,90,100): 10 * 3 = 30
         # 5-danger cards (11,22,33,44,66,77,88,99): 8 * 5 = 40
-        # 7-danger card (55): 1 * 7 = 7
+        # 7-danger card (66): 1 * 7 = 7
         # Expected total: Let's verify by counting
 
         danger_1_count = sum(1 for c in deck if c.danger == 1)
@@ -132,5 +132,5 @@ class TestDeck:
         assert danger_2_count == 9  # 5,15,25,35,45,65,75,85,95
         assert danger_3_count == 10  # 10,20,30,40,50,60,70,80,90,100
         assert danger_5_count == 8  # 11,22,33,44,66,77,88,99
-        assert danger_7_count == 1  # 55
+        assert danger_7_count == 1  # 66
         assert danger_1_count == 104 - 9 - 10 - 8 - 1  # Rest

@@ -363,14 +363,16 @@ FIGURE_DANGER_BODY_TYPE = {
     2: BodyType.NORMAL,
     3: BodyType.NORMAL,
     5: BodyType.LARGE,
-    7: BodyType.NORMAL,
+    7: BodyType.LARGE,
 }
 
 
 # =============================================================================
 # Soldier Figure Sprite Settings
 # =============================================================================
-FIGURE_SPRITE_FRAMES = 4  # Number of animation frames in sprite sheet
+FIGURE_SPRITE_FRAMES = 4  # Number of idle animation steps (bob cycle)
+# Y-offset per idle step: frame 0=base, 1=2px up, 2=4px up, 3=2px up (bob down)
+FIGURE_IDLE_Y_OFFSETS = (0, -2, -4, -2)
 FIGURE_DISPLAY_WIDTH = 80  # Default display width (NORMAL body type)
 FIGURE_DISPLAY_HEIGHT = 84  # Default display height (NORMAL body type)
 FIGURE_DROP_DURATION = 0.3  # Drop animation duration in seconds
@@ -384,6 +386,28 @@ FIGURE_OFFSET_Y = 20  # Vertical offset (positive = down, used as fallback)
 FIGURE_SHADOW_RADIUS = 18  # Default shadow radius (NORMAL body type)
 FIGURE_SHADOW_VISIBILITY_THRESHOLD = 40
 FIGURE_NUMBER_FONT_SIZE = 14
+
+# Aura glow effect per danger level
+FIGURE_AURA_COLORS: dict[int, tuple[int, int, int]] = {
+    2: (255, 220, 50),  # Weak yellow
+    3: (255, 140, 0),  # Medium orange
+    5: (220, 50, 50),  # Strong red
+    7: (150, 50, 220),  # Very strong purple
+}
+FIGURE_AURA_RADIUS: dict[int, int] = {
+    2: 55,  # NORMAL sprite = 90px wide; 55px radius peeks ~10px beyond sides
+    3: 68,  # NORMAL sprite; clearly visible beyond edges
+    5: 82,  # LARGE sprite = 134px wide; 82px radius peeks ~15px beyond sides
+    7: 100,  # LARGE sprite; prominent halo
+}
+FIGURE_AURA_MAX_ALPHA: dict[int, int] = {
+    2: 90,
+    3: 120,
+    5: 150,
+    7: 180,
+}
+FIGURE_AURA_PULSE_SPEED: float = 2.5  # Hz
+FIGURE_AURA_LAYERS: int = 3
 
 # Dust particle count by danger level
 DUST_PARTICLE_COUNT = {

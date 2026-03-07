@@ -19,7 +19,7 @@ class Card:
         - Cards ending in 5: 2 danger
         - Cards ending in 0: 3 danger
         - Double digit cards (11,22,33...): 5 danger
-        - Card 55: 7 danger (ends in 5 AND double digit)
+        - Card 66: 7 danger (special override)
     """
 
     number: int
@@ -66,7 +66,7 @@ def calculate_danger(number: int) -> int:
     - Cards ending in 5: 2 danger
     - Cards ending in 0: 3 danger
     - Double digit cards (11,22,33,...,99): 5 danger
-    - Card 55: 7 danger (ends in 5 AND double digit = 2+5)
+    - Card 66: 7 danger (special override)
 
     Args:
         number: Card number (1-104)
@@ -83,7 +83,7 @@ def calculate_danger(number: int) -> int:
     ends_in_5 = number % 10 == 5
     ends_in_0 = (number % 10 == 0) and (number > 0)
 
-    if is_double and ends_in_5:  # Special case: 55
+    if number == 66:  # Special case: 66
         danger = 7
     elif is_double:
         danger = 5

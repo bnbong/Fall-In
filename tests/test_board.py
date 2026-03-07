@@ -118,7 +118,7 @@ class TestBoard:
         board = Board()
         board.initialize_rows(
             [
-                Card(55, 7),  # Row 0: danger 7
+                Card(66, 7),  # Row 0: danger 7
                 Card(30, 3),  # Row 1: danger 3
                 Card(50, 3),  # Row 2: danger 3
                 Card(11, 5),  # Row 3: danger 5
