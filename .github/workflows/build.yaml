@@ -1,15 +1,198 @@
-name: build game
+name: Build & Release
+
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version tag for manual build (e.g. v0.1.0-test)"
+        required: false
+        default: "dev"
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    shell: bash
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Desktop builds: Windows / macOS / Linux
+  # ─────────────────────────────────────────────────────────────────────────────
+  build-desktop:
+    name: Desktop (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    env:
+      VERSION: ${{ github.event.release.tag_name || inputs.version || 'dev' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+
     steps:
-      - name: Checkout
+      - name: Checkout (with LFS)
         uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v4
         with:
-          python-version: '3.12'
+          lfs: true
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install game dependencies
+        run: uv sync
+
+      - name: Install PyInstaller
+        run: uv pip install pyinstaller
+
+      # ── Icon conversion ────────────────────────────────────────────────────
+      - name: Convert icon to ICO (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          uv pip install Pillow
+          python -c "
+          from PIL import Image
+          img = Image.open('assets/fall_in_icon.png').convert('RGBA')
+          img.save('assets/fall_in_icon.ico', sizes=[(16,16),(32,32),(48,48),(256,256)])
+          "
+
+      - name: Convert icon to ICNS (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p assets/fall_in_icon.iconset
+          for size in 16 32 128 256 512; do
+            sips -z $size $size assets/fall_in_icon.png \
+              --out assets/fall_in_icon.iconset/icon_${size}x${size}.png
+          done
+          iconutil -c icns assets/fall_in_icon.iconset \
+            --out assets/fall_in_icon.icns
+
+      # ── ffmpeg setup ───────────────────────────────────────────────────────
+      - name: Install ffmpeg (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ffmpeg
+
+      - name: Install ffmpeg (Windows)
+        if: runner.os == 'Windows'
+        run: choco install ffmpeg -y
+
+      # ── BGM WAV → OGG ─────────────────────────────────────────────────────
+      # Converts only bgm/ (68 MB → ~20 MB). sfx/ stays as WAV (5.7 MB).
+      # OGG files are picked up automatically by asset_loader._resolve_sound_path().
+      - name: Convert BGM WAV to OGG
+        run: |
+          for f in assets/sounds/bgm/*.wav; do
+            ffmpeg -i "$f" -codec:a libvorbis -q:a 4 "${f%.wav}.ogg" -y
+            rm "$f"
+          done
+
+      # ── PyInstaller build ──────────────────────────────────────────────────
+      - name: Build with PyInstaller
+        run: uv run pyinstaller fall_in.spec
+
+      # ── Archive ───────────────────────────────────────────────────────────
+      - name: Archive (Windows)
+        if: runner.os == 'Windows'
+        run: cd dist && zip -r "../fall-in-${VERSION}-windows.zip" fall-in/
+
+      - name: Archive (macOS)
+        if: runner.os == 'macOS'
+        run: cd dist && zip -r "../fall-in-${VERSION}-macos.zip" "Fall In.app/"
+
+      - name: Archive (Linux)
+        if: runner.os == 'Linux'
+        run: cd dist && tar -czf "../fall-in-${VERSION}-linux.tar.gz" fall-in/
+
+      # ── Upload artifact (always, for inspection) ──────────────────────────
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: fall-in-${{ runner.os }}-${{ env.VERSION }}
+          path: fall-in-${{ env.VERSION }}-*
+          retention-days: 7
+
+      # ── Upload to GitHub Release (release trigger only) ───────────────────
+      - name: Upload to GitHub Release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: fall-in-${{ env.VERSION }}-*
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Web build: Pygbag (WebAssembly)
+  # NOTE: Requires async game loop before this job succeeds.
+  #       GameManager.run() must use `await asyncio.sleep(0)`.
+  # ─────────────────────────────────────────────────────────────────────────────
+  build-web:
+    name: Web (Pygbag)
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ github.event.release.tag_name || inputs.version || 'dev' }}
+
+    steps:
+      - name: Checkout (with LFS)
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install game dependencies
+        run: uv sync
+
+      - name: Install Pygbag
+        run: pip install pygbag
+
+      # ── BGM WAV → OGG ─────────────────────────────────────────────────────
+      - name: Convert BGM WAV to OGG
+        run: |
+          for f in assets/sounds/bgm/*.wav; do
+            ffmpeg -i "$f" -codec:a libvorbis -q:a 4 "${f%.wav}.ogg" -y
+            rm "$f"
+          done
+
+      # ── Stage assets next to game code ────────────────────────────────────
+      # Pygbag requires assets to be reachable from the game folder.
+      # _find_project_root() in config.py searches parent dirs of config.py,
+      # so copying assets/ and data/ into src/fall_in/ makes them discoverable.
+      - name: Stage assets for Pygbag
+        run: |
+          cp -r assets src/fall_in/assets
+          cp -r data   src/fall_in/data
+
+      # ── Pygbag build ──────────────────────────────────────────────────────
+      - name: Build web (Pygbag)
+        run: python -m pygbag --build src/fall_in
+
+      # ── Archive ───────────────────────────────────────────────────────────
+      - name: Archive web build
+        run: |
+          cd src/fall_in/build
+          zip -r "../../../fall-in-${VERSION}-web.zip" web/
+
+      # ── Upload artifact (always, for inspection) ──────────────────────────
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: fall-in-web-${{ env.VERSION }}
+          path: fall-in-${{ env.VERSION }}-web.zip
+          retention-days: 7
+
+      # ── Upload to GitHub Release (release trigger only) ───────────────────
+      - name: Upload to GitHub Release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: fall-in-${{ env.VERSION }}-web.zip

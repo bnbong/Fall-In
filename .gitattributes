@@ -1,0 +1,18 @@
+# Git LFS tracking for large binary assets
+
+# Images
+assets/images/**/*.png  filter=lfs diff=lfs merge=lfs -text
+assets/images/**/*.jpg  filter=lfs diff=lfs merge=lfs -text
+assets/images/**/*.JPG  filter=lfs diff=lfs merge=lfs -text
+
+# Audio
+assets/sounds/**/*.wav  filter=lfs diff=lfs merge=lfs -text
+assets/sounds/**/*.mp3  filter=lfs diff=lfs merge=lfs -text
+
+# Fonts
+assets/fonts/**/*.otf   filter=lfs diff=lfs merge=lfs -text
+assets/fonts/**/*.ttf   filter=lfs diff=lfs merge=lfs -text
+
+# Root-level images
+assets/*.png            filter=lfs diff=lfs merge=lfs -text
+assets/*.JPG            filter=lfs diff=lfs merge=lfs -text

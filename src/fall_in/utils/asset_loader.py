@@ -146,6 +146,14 @@ class AssetLoader:
 
         return self._images[path]
 
+    def _resolve_sound_path(self, path: str):
+        """Try OGG first (CI/production build), fall back to original extension (local dev)."""
+        full = SOUNDS_DIR / path
+        ogg = full.with_suffix(".ogg")
+        if ogg.exists():
+            return ogg
+        return full
+
     def load_sound(self, path: str) -> Optional[pygame.mixer.Sound]:
         """
         Load a sound from the assets/sounds directory.
@@ -157,7 +165,7 @@ class AssetLoader:
             pygame.mixer.Sound or None if not found
         """
         if path not in self._sounds:
-            full_path = SOUNDS_DIR / path
+            full_path = self._resolve_sound_path(path)
 
             if full_path.exists():
                 self._sounds[path] = pygame.mixer.Sound(str(full_path))
