@@ -67,3 +67,47 @@ def draw_centered_text(
     text_rect = text_surface.get_rect(center=center)
     screen.blit(text_surface, text_rect)
     return text_rect
+
+
+def wrap_text(text: str, font: pygame.font.Font, max_width: int) -> list[str]:
+    """
+    Wrap text to fit within a given pixel width, splitting on existing
+    newlines first, then wrapping long lines character-by-character.
+
+    Character-level wrapping is used because Korean text does not rely
+    on spaces for word boundaries the way English does.
+
+    Args:
+        text: The text to wrap (may contain ``\\n`` for explicit line breaks).
+        font: A pygame Font used to measure rendered width.
+        max_width: Maximum pixel width per line.
+
+    Returns:
+        A list of strings, each fitting within *max_width* when rendered
+        with *font*.
+    """
+    if max_width <= 0:
+        return [text]
+
+    wrapped_lines: list[str] = []
+
+    for paragraph in text.split("\n"):
+        paragraph = paragraph.strip()
+        if not paragraph:
+            wrapped_lines.append("")
+            continue
+
+        current_line = ""
+        for char in paragraph:
+            test_line = current_line + char
+            if font.size(test_line)[0] <= max_width:
+                current_line = test_line
+            else:
+                if current_line:
+                    wrapped_lines.append(current_line)
+                current_line = char
+
+        if current_line:
+            wrapped_lines.append(current_line)
+
+    return wrapped_lines if wrapped_lines else [""]

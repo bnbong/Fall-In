@@ -9,6 +9,7 @@ import pygame
 
 from fall_in.scenes.base_scene import Scene
 from fall_in.utils.asset_loader import AssetLoader, get_font
+from fall_in.utils.text_utils import wrap_text
 from fall_in.entities.battalion_card import BattalionCard
 from fall_in.entities.frozen_food import FrozenFood
 from fall_in.data.soldier_data import SoldierInfo, get_soldier_manager
@@ -600,9 +601,22 @@ class RecruitmentScene(Scene):
             )
 
         if bust_image:
-            # Calculate scaled size based on animation progress
-            scaled_width = int(RECRUIT_BUST_WIDTH * self.soldier_scale)
-            scaled_height = int(RECRUIT_BUST_HEIGHT * self.soldier_scale)
+            target_w = int(RECRUIT_BUST_WIDTH * self.soldier_scale)
+            target_h = int(RECRUIT_BUST_HEIGHT * self.soldier_scale)
+
+            if self.current_soldier.id == 55:
+                # Soldier 55 uses a wider image — keep fixed scaling for now
+                scaled_width, scaled_height = target_w, target_h
+            else:
+                # Preserve aspect ratio: fit within target box without distortion
+                orig_w, orig_h = bust_image.get_size()
+                scale = target_h / orig_h
+                scaled_width = int(orig_w * scale)
+                scaled_height = target_h
+                if scaled_width > target_w:
+                    scale = target_w / orig_w
+                    scaled_width = target_w
+                    scaled_height = int(orig_h * scale)
 
             # Scale the image
             scaled_bust = pygame.transform.smoothscale(
@@ -651,9 +665,18 @@ class RecruitmentScene(Scene):
         # Create surface for alpha blending
         ui_surface = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
 
-        # Speech bubble
+        # Speech bubble — dynamically sized to fit wrapped intro text
+        font = get_font(14)
+        intro_text = self.current_soldier.intro
+        bubble_w = 280
+        bubble_padding_x = 16
+        bubble_padding_y = 12
+        line_height = 20
+        intro_lines = wrap_text(intro_text, font, bubble_w - bubble_padding_x * 2)
+        bubble_h = bubble_padding_y * 2 + line_height * len(intro_lines)
+
         bubble_rect = pygame.Rect(
-            RECRUIT_SPEECH_BUBBLE_X, RECRUIT_SPEECH_BUBBLE_Y, 280, 60
+            RECRUIT_SPEECH_BUBBLE_X, RECRUIT_SPEECH_BUBBLE_Y, bubble_w, bubble_h
         )
         pygame.draw.rect(
             ui_surface, (*WHITE, self.element_alpha), bubble_rect, border_radius=10
@@ -666,12 +689,13 @@ class RecruitmentScene(Scene):
             border_radius=10,
         )
 
-        font = get_font(14)
-        intro_text = self.current_soldier.intro
-        text = font.render(intro_text, True, (30, 30, 30))
-        text.set_alpha(self.element_alpha)
-        text_rect = text.get_rect(center=bubble_rect.center)
-        ui_surface.blit(text, text_rect)
+        text_x = bubble_rect.left + bubble_padding_x
+        text_y = bubble_rect.top + bubble_padding_y
+        for line in intro_lines:
+            line_surf = font.render(line, True, (30, 30, 30))
+            line_surf.set_alpha(self.element_alpha)
+            ui_surface.blit(line_surf, (text_x, text_y))
+            text_y += line_height
 
         # Notes panel
         notes_rect = pygame.Rect(
@@ -730,8 +754,9 @@ class RecruitmentScene(Scene):
         )
         y_offset += 15
 
-        # Note (multi-line, fill available space above danger label)
-        note_lines = self.current_soldier.note.split("\n")
+        # Note (multi-line with word-wrap, fill available space above danger label)
+        note_max_width = notes_rect.width - 60  # left 25px + right 15px padding
+        note_lines = wrap_text(self.current_soldier.note, small_font, note_max_width)
         line_height = 22
         danger_label_y = notes_rect.bottom - 50
         max_note_lines = max(1, (danger_label_y - y_offset) // line_height)
@@ -995,8 +1020,9 @@ class RecruitmentScene(Scene):
         )
         y_offset += 15
 
-        # Note (fill available space above the danger label area)
-        note_lines = soldier.note.split("\n")
+        # Note (word-wrapped, fill available space above the danger label area)
+        note_max_width = panel_rect.right - 30 - info_x
+        note_lines = wrap_text(soldier.note, small_font, note_max_width)
         line_height = 24
         danger_area_y = panel_rect.bottom - 190  # Leave room for danger + card
         max_note_lines = max(1, (danger_area_y - y_offset) // line_height)
