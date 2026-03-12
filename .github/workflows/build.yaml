@@ -111,7 +111,7 @@ jobs:
 
       # ── Upload artifact (always, for inspection) ──────────────────────────
       - name: Upload build artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: fall-in-${{ runner.os }}-${{ env.VERSION }}
           path: fall-in-${{ env.VERSION }}-*
@@ -184,7 +184,7 @@ jobs:
 
       # ── Upload artifact (always, for inspection) ──────────────────────────
       - name: Upload build artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: fall-in-web-${{ env.VERSION }}
           path: fall-in-${{ env.VERSION }}-web.zip
