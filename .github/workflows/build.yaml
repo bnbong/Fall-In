@@ -33,7 +33,7 @@ jobs:
 
     steps:
       - name: Checkout (with LFS)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           lfs: true
 
@@ -137,7 +137,7 @@ jobs:
 
     steps:
       - name: Checkout (with LFS)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           lfs: true
 
