@@ -33,17 +33,17 @@ jobs:
 
     steps:
       - name: Checkout (with LFS)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           lfs: true
 
       - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@v7
 
       - name: Install game dependencies
         run: uv sync
@@ -111,7 +111,7 @@ jobs:
 
       # ── Upload artifact (always, for inspection) ──────────────────────────
       - name: Upload build artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: fall-in-${{ runner.os }}-${{ env.VERSION }}
           path: fall-in-${{ env.VERSION }}-*
@@ -137,17 +137,17 @@ jobs:
 
     steps:
       - name: Checkout (with LFS)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           lfs: true
 
       - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@v7
 
       - name: Install game dependencies
         run: uv sync
@@ -184,7 +184,7 @@ jobs:
 
       # ── Upload artifact (always, for inspection) ──────────────────────────
       - name: Upload build artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: fall-in-web-${{ env.VERSION }}
           path: fall-in-${{ env.VERSION }}-web.zip
