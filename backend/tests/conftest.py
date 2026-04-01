@@ -26,6 +26,15 @@ from app.database import Base, get_db
 from app.main import app
 
 
+@pytest.fixture(autouse=True)
+def reset_ws_manager():
+    """Reset the WebSocket connection manager between tests."""
+    from app.ws.connection_manager import manager
+    manager.reset()
+    yield
+    manager.reset()
+
+
 @pytest.fixture()
 def db_engine():
     """Fresh in-memory SQLite engine for one test."""

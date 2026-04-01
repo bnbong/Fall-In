@@ -17,6 +17,7 @@ from app.api import auth as auth_router
 from app.api import me as me_router
 from app.config import settings
 from app.database import Base, engine
+from app.ws import endpoint as ws_router
 
 
 @asynccontextmanager
@@ -37,6 +38,7 @@ app = FastAPI(
 
 app.include_router(auth_router.router)
 app.include_router(me_router.router)
+app.include_router(ws_router.router)
 
 
 @app.get("/healthz", tags=["ops"])
