@@ -321,7 +321,8 @@ class GameRules:
             if human_eliminated:
                 # Single-player: human lost — lowest-score AI wins.
                 ai_players = [
-                    p for p in self.players
+                    p
+                    for p in self.players
                     if p is not self.players[self._human_seat] and not p.is_eliminated  # type: ignore[index]
                 ]
                 if ai_players:

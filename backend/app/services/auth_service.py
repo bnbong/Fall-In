@@ -13,6 +13,7 @@ from app.repositories import user_repo
 
 class AuthenticationError(Exception):
     """Raised when credentials are invalid."""
+
     pass
 
 

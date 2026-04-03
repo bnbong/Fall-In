@@ -35,9 +35,9 @@ from typing import Optional
 class ControllerType(str, Enum):
     """Who (or what) controls a seat."""
 
-    LOCAL = "local"    # Human on this client (single-player path)
+    LOCAL = "local"  # Human on this client (single-player path)
     REMOTE = "remote"  # Human on another client (multiplayer)
-    BOT = "bot"        # AI-controlled seat
+    BOT = "bot"  # AI-controlled seat
 
 
 @dataclass
@@ -87,9 +87,9 @@ class MatchCardPublic:
       - figure variant id
     """
 
-    number: int       # 1-104
-    danger: int       # 1-7
-    owner_seat: int   # Seat index of the player who played this card
+    number: int  # 1-104
+    danger: int  # 1-7
+    owner_seat: int  # Seat index of the player who played this card
 
 
 # ---------------------------------------------------------------------------
@@ -115,10 +115,10 @@ class PublicMatchState:
     match_id: str
     round_number: int
     phase: str
-    player_order_seats: list[int]                    # seat indices in play order
+    player_order_seats: list[int]  # seat indices in play order
     board_rows: list[list[MatchCardPublic]]
     played_cards_this_turn: list[MatchCardPublic]
-    committed_scores: dict[int, int]                 # seat_index -> danger total
+    committed_scores: dict[int, int]  # seat_index -> danger total
     seats: list[SeatIdentity]
 
     def get_seat(self, seat_index: int) -> Optional[SeatIdentity]:

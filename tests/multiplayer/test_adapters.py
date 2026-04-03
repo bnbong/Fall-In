@@ -11,7 +11,6 @@ Covers:
 import pytest
 
 from fall_in.ai.ai_player import create_ai_players
-from fall_in.core.card import calculate_danger
 from fall_in.core.player import create_players
 from fall_in.core.rules import GameRules, RoundPhase
 from fall_in.multiplayer.local_adapter import LocalGameAdapter
@@ -34,6 +33,7 @@ from fall_in.net.serializers import (
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_local_adapter(match_id: str = "local-test") -> LocalGameAdapter:
     players = create_players()  # 1 human + 3 AI
     ai_controllers = create_ai_players(players)
@@ -54,7 +54,11 @@ def _make_public_state() -> PublicMatchState:
         played_cards_this_turn=[],
         committed_scores={0: 0, 1: 0, 2: 0, 3: 0},
         seats=[
-            SeatIdentity(seat_index=i, controller_type=ControllerType.REMOTE, display_name=f"P{i}")
+            SeatIdentity(
+                seat_index=i,
+                controller_type=ControllerType.REMOTE,
+                display_name=f"P{i}",
+            )
             for i in range(4)
         ],
     )
@@ -71,6 +75,7 @@ def _make_private_state(seat: int = 0) -> PrivatePlayerState:
 # ---------------------------------------------------------------------------
 # TestLocalGameAdapter
 # ---------------------------------------------------------------------------
+
 
 class TestLocalGameAdapter:
     def test_start_round_deals_ten_cards_to_human(self):
@@ -210,6 +215,7 @@ class TestLocalGameAdapter:
 # ---------------------------------------------------------------------------
 # TestRemoteGameAdapter
 # ---------------------------------------------------------------------------
+
 
 class TestRemoteGameAdapter:
     def test_has_match_started_false_initially(self):

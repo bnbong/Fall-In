@@ -18,26 +18,24 @@ asyncio.sleep durations.  This keeps the suite fast and deterministic.
 import time
 
 import pytest
+from fall_in.core.rules import RoundPhase
 from fastapi.testclient import TestClient
 
 from app.database import get_db
 from app.main import app
-from app.models.room import Room, RoomParticipant, RoomPhase, SeatControllerType
+from app.models.room import Room, SeatControllerType
 from app.repositories.match_repo import InMemoryMatchRepo
 from app.repositories.reconnect_repo import InMemoryReconnectRepo
 from app.repositories.room_repo import InMemoryRoomRepo
-from app.services.match_service import MatchError, MatchService
+from app.services.match_service import MatchService
 from app.services.room_service import RoomService
 from app.ws.endpoint import get_match_service, get_presence_manager, get_room_service
 from app.ws.presence import PresenceManager
-from app.ws.session import WsSession
-
-from fall_in.core.rules import RoundPhase
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture()
 def room_service():
@@ -77,12 +75,16 @@ def client(db, room_service, match_service, presence) -> TestClient:
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _register(client: TestClient, email: str, nickname: str) -> str:
-    resp = client.post("/auth/register", json={
-        "email": email,
-        "password": "password123",
-        "nickname": nickname,
-    })
+    resp = client.post(
+        "/auth/register",
+        json={
+            "email": email,
+            "password": "password123",
+            "nickname": nickname,
+        },
+    )
     assert resp.status_code in (200, 201), resp.text
     return resp.json()["access_token"]
 
@@ -115,6 +117,7 @@ def _make_full_room(room_service: RoomService, host_name: str = "Host") -> Room:
 # ---------------------------------------------------------------------------
 # TestHeartbeat
 # ---------------------------------------------------------------------------
+
 
 class TestHeartbeat:
     def test_pong_clears_awaiting_flag(self, client: TestClient):
@@ -159,6 +162,7 @@ class TestHeartbeat:
 # ---------------------------------------------------------------------------
 # TestReconnectToken
 # ---------------------------------------------------------------------------
+
 
 class TestReconnectToken:
     def test_token_issued_on_match_start(self, client: TestClient):
@@ -221,9 +225,7 @@ class TestReconnectToken:
         assert reconnect_repo.get(t0) is None
         assert reconnect_repo.get(t1) is None
 
-    def test_create_revokes_previous_for_same_seat(
-        self, reconnect_repo: InMemoryReconnectRepo
-    ):
+    def test_create_revokes_previous_for_same_seat(self, reconnect_repo: InMemoryReconnectRepo):
         """Creating a new token for the same (match, seat) invalidates the old one."""
         old = reconnect_repo.create("m1", "ABCDEF", 0, None, "Alice", "guest", 60)
         new = reconnect_repo.create("m1", "ABCDEF", 0, None, "Alice", "guest", 60)
@@ -234,6 +236,7 @@ class TestReconnectToken:
 # ---------------------------------------------------------------------------
 # TestReconnectFlow
 # ---------------------------------------------------------------------------
+
 
 class TestReconnectFlow:
     def test_reconnect_ok_with_valid_token(self, client: TestClient):
@@ -304,20 +307,15 @@ class TestReconnectFlow:
             ws.send_json({"type": "ROOM_START", "data": {}})
             rc_msg = _consume_until(ws, "RECONNECT_TOKEN", max_msgs=30)
             reconnect_token = rc_msg["data"]["token"]
-            # Capture the room_code from ROOM_STATE messages.
-            room_code = None
             match = match_service.get_match_by_room(
                 # Find the room by iterating room_service repo
-                next(
-                    rc
-                    for rc in room_service.repo._rooms
-                )
+                next(rc for rc in room_service.repo._rooms)
             )
 
         # Simulate grace expiry by calling takeover directly.
         if match is None:
             # Find match another way
-            from app.ws.presence import presence_manager as _pm
+
             # Just use the match_service's repo
             all_matches = list(match_service.repo._matches.values())
             assert len(all_matches) == 1
@@ -349,9 +347,7 @@ class TestReconnectFlow:
         assert match.seats[0].is_disconnected is False
         assert match.seats[0].connection_id == "new-conn-id"
 
-    def test_reconnect_participant_updates_room(
-        self, room_service: RoomService
-    ):
+    def test_reconnect_participant_updates_room(self, room_service: RoomService):
         """reconnect_participant() updates the connection_id in the room repo."""
         room = room_service.create_room(
             display_name="Alice",
@@ -366,6 +362,7 @@ class TestReconnectFlow:
 # ---------------------------------------------------------------------------
 # TestBotTakeover
 # ---------------------------------------------------------------------------
+
 
 class TestBotTakeover:
     def test_takeover_converts_remote_to_bot(
@@ -463,6 +460,7 @@ class TestBotTakeover:
 # TestSelectionTimeout
 # ---------------------------------------------------------------------------
 
+
 class TestSelectionTimeout:
     def test_auto_select_timed_out_selects_for_unselected_humans(
         self, match_service: MatchService, room_service: RoomService
@@ -527,10 +525,9 @@ class TestSelectionTimeout:
 # TestPresenceManager
 # ---------------------------------------------------------------------------
 
+
 class TestPresenceManager:
-    def test_issue_and_lookup_token(
-        self, presence: PresenceManager
-    ):
+    def test_issue_and_lookup_token(self, presence: PresenceManager):
         """issue_token() must store a retrievable entry."""
         token = presence.issue_token(
             match_id="m1",
@@ -548,8 +545,12 @@ class TestPresenceManager:
     def test_revoke_seat_token_removes_entry(self, presence: PresenceManager):
         """revoke_seat_token() must make the token unretrievable."""
         token = presence.issue_token(
-            match_id="m1", room_code="ABCDEF", seat_index=0,
-            user_id=None, display_name="Alice", account_type="guest",
+            match_id="m1",
+            room_code="ABCDEF",
+            seat_index=0,
+            user_id=None,
+            display_name="Alice",
+            account_type="guest",
         )
         presence.revoke_seat_token("m1", 0)
         assert presence.lookup_token(token) is None

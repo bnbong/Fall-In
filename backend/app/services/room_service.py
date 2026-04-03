@@ -109,8 +109,7 @@ class RoomService:
         room.participants.pop(seat_index, None)
 
         remaining_humans = [
-            p for p in room.participants.values()
-            if p.controller_type == SeatControllerType.REMOTE
+            p for p in room.participants.values() if p.controller_type == SeatControllerType.REMOTE
         ]
         if not remaining_humans:
             self.repo.delete(room_code)

@@ -28,7 +28,7 @@ import asyncio
 from typing import Any, Awaitable, Callable, Optional
 
 from app.config import settings
-from app.repositories.reconnect_repo import InMemoryReconnectRepo, ReconnectEntry
+from app.repositories.reconnect_repo import ReconnectEntry
 
 
 class PresenceManager:
@@ -107,8 +107,15 @@ class PresenceManager:
         self._cancel_task(self._grace_tasks, key)
         self._grace_tasks[key] = asyncio.create_task(
             self._grace_timer(
-                key, match_id, seat_index, match, match_service,
-                room_service, manager, room_code, on_turn_ready,
+                key,
+                match_id,
+                seat_index,
+                match,
+                match_service,
+                room_service,
+                manager,
+                room_code,
+                on_turn_ready,
             )
         )
 
@@ -144,10 +151,13 @@ class PresenceManager:
             room_service.mark_participant_bot_takeover(room_code, seat_index)
             self._repo.revoke_by_match_seat(match_id, seat_index)
 
-            await manager.broadcast_to_room(room_code, {
-                "type": "SEAT_BOT_TAKEOVER",
-                "data": {"seat_index": seat_index},
-            })
+            await manager.broadcast_to_room(
+                room_code,
+                {
+                    "type": "SEAT_BOT_TAKEOVER",
+                    "data": {"seat_index": seat_index},
+                },
+            )
 
             # Cancel any outstanding selection timeout; the bot just selected.
             self.cancel_selection_timeout(match_id)
@@ -183,7 +193,12 @@ class PresenceManager:
         self._cancel_task(self._selection_tasks, match_id)
         self._selection_tasks[match_id] = asyncio.create_task(
             self._selection_timer(
-                match_id, match, match_service, manager, room_code, on_turn_ready,
+                match_id,
+                match,
+                match_service,
+                manager,
+                room_code,
+                on_turn_ready,
             )
         )
 
@@ -207,10 +222,13 @@ class PresenceManager:
 
             timed_out = match_service.auto_select_timed_out(match)
             if timed_out:
-                await manager.broadcast_to_room(room_code, {
-                    "type": "SELECTION_TIMEOUT",
-                    "data": {"timed_out_seats": timed_out},
-                })
+                await manager.broadcast_to_room(
+                    room_code,
+                    {
+                        "type": "SELECTION_TIMEOUT",
+                        "data": {"timed_out_seats": timed_out},
+                    },
+                )
 
             if match_service.all_selected(match):
                 await on_turn_ready(room_code, match)
@@ -255,8 +273,8 @@ class PresenceManager:
 # Tests override it via the reset_presence_manager fixture.
 # ---------------------------------------------------------------------------
 
-from app.repositories.reconnect_repo import make_reconnect_repo  # noqa: E402
 from app.config import settings as _settings  # noqa: E402 (already imported above)
+from app.repositories.reconnect_repo import make_reconnect_repo  # noqa: E402
 
 _reconnect_repo = make_reconnect_repo(_settings.REDIS_URL)
 presence_manager = PresenceManager(_reconnect_repo)

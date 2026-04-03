@@ -9,7 +9,7 @@ class WsSession:
     connection_id: str
     user_id: Optional[str] = None
     display_name: Optional[str] = None
-    account_type: Optional[str] = None   # "registered" | "guest"
+    account_type: Optional[str] = None  # "registered" | "guest"
     room_code: Optional[str] = None
     seat_index: Optional[int] = None
     match_id: Optional[str] = None
@@ -23,6 +23,10 @@ class WsSession:
     # Stored so the endpoint can look it up without querying the repo on
     # normal (non-reconnect) disconnects.
     reconnect_token: Optional[str] = None
+
+    # True while this connection is sitting in the quick-match queue (PR-06).
+    # Cleared when a match is formed or the player leaves the queue manually.
+    in_queue: bool = False
 
     @property
     def is_authenticated(self) -> bool:

@@ -16,7 +16,6 @@ starts with an empty in-memory room store.
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.main import app
@@ -27,10 +26,10 @@ from app.services.match_service import MatchService
 from app.services.room_service import RoomError, RoomService
 from app.ws.endpoint import get_match_service, get_room_service
 
-
 # ---------------------------------------------------------------------------
 # Fixtures — local overrides of conftest.py
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture()
 def room_service():
@@ -63,12 +62,16 @@ def client(db, room_service, match_service) -> TestClient:
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _register(client: TestClient, email: str, nickname: str) -> str:
-    resp = client.post("/auth/register", json={
-        "email": email,
-        "password": "password123",
-        "nickname": nickname,
-    })
+    resp = client.post(
+        "/auth/register",
+        json={
+            "email": email,
+            "password": "password123",
+            "nickname": nickname,
+        },
+    )
     assert resp.status_code == 201, resp.json()
     return resp.json()["access_token"]
 
@@ -93,6 +96,7 @@ def _ws_auth(ws, token: str) -> None:
 # ===========================================================================
 # Unit tests — RoomService
 # ===========================================================================
+
 
 class TestRoomService:
     def test_create_room_returns_six_char_code(self, room_service):
@@ -154,8 +158,8 @@ class TestRoomService:
 
     def test_leave_room_host_reassigns_to_lowest_seat(self, room_service):
         room = room_service.create_room("Alice", "conn-1")  # seat 0 = host
-        room_service.join_room(room.room_code, "Bob", "conn-2")    # seat 1
-        updated = room_service.leave_room(room.room_code, 0)       # host leaves
+        room_service.join_room(room.room_code, "Bob", "conn-2")  # seat 1
+        updated = room_service.leave_room(room.room_code, 0)  # host leaves
         assert updated.host_seat_index == 1
 
     def test_set_ready_updates_flag(self, room_service):
@@ -171,8 +175,9 @@ class TestRoomService:
         room = room_service.create_room("Alice", "conn-1")
         started = room_service.start_room(room.room_code, 0)
         assert len(started.participants) == 4
-        bots = [p for p in started.participants.values()
-                if p.controller_type == SeatControllerType.BOT]
+        bots = [
+            p for p in started.participants.values() if p.controller_type == SeatControllerType.BOT
+        ]
         assert len(bots) == 3
 
     def test_start_bots_are_marked_ready(self, room_service):
@@ -253,10 +258,11 @@ class TestRoomService:
 
     def test_leave_room_host_reassigns_only_among_humans(self, room_service):
         """Host re-assignment must skip bot seats."""
-        room = room_service.create_room("HostA", "conn-a")    # seat 0 = host
+        room = room_service.create_room("HostA", "conn-a")  # seat 0 = host
         room_service.join_room(room.room_code, "PlayerB", "conn-b")  # seat 1
         # Manually add a bot at seat 2 (simulating a partial-fill scenario)
         from app.models.room import RoomParticipant, SeatControllerType
+
         room.participants[2] = RoomParticipant(
             seat_index=2,
             display_name="Bot3",
@@ -273,6 +279,7 @@ class TestRoomService:
 # ===========================================================================
 # Integration tests — WebSocket endpoint
 # ===========================================================================
+
 
 class TestRoomWebSocket:
     def test_ws_hello_welcome(self, client):
@@ -552,6 +559,7 @@ class TestRoomWebSocket:
         """A suspended account's access token must be rejected in WS auth."""
         token = _register(client, "wssuspended@example.com", nickname="WsSuspended")
         from app.models.db import User, UserStatus
+
         user = db.query(User).filter(User.email == "wssuspended@example.com").first()
         user.status = UserStatus.SUSPENDED
         db.commit()
@@ -567,6 +575,7 @@ class TestRoomWebSocket:
 # ===========================================================================
 # Multi-client WebSocket tests — broadcast, disconnect cleanup, host transfer
 # ===========================================================================
+
 
 class TestMultiClientWebSocket:
     """
@@ -589,11 +598,11 @@ class TestMultiClientWebSocket:
                 with client.websocket_connect("/ws") as ws:
                     _ws_auth(ws, token_a)
                     ws.send_json({"type": "ROOM_CREATE"})
-                    msg = ws.receive_json()                  # ROOM_STATE (1 member)
+                    msg = ws.receive_json()  # ROOM_STATE (1 member)
                     shared["room_code"] = msg["data"]["room_code"]
                     shared["a_msgs"].append(msg)
                     a_ready.set()
-                    msg2 = ws.receive_json()                 # broadcast when B joins
+                    msg2 = ws.receive_json()  # broadcast when B joins
                     shared["a_msgs"].append(msg2)
             except Exception as exc:
                 shared["error"] = exc
@@ -605,7 +614,7 @@ class TestMultiClientWebSocket:
                 with client.websocket_connect("/ws") as ws:
                     _ws_auth(ws, token_b)
                     ws.send_json({"type": "ROOM_JOIN", "data": {"room_code": shared["room_code"]}})
-                    ws.receive_json()                        # ROOM_STATE (2 members)
+                    ws.receive_json()  # ROOM_STATE (2 members)
             except Exception as exc:
                 shared["error"] = exc
 
@@ -639,9 +648,9 @@ class TestMultiClientWebSocket:
                     shared["room_code"] = msg["data"]["room_code"]
                     a_created.set()
                     b_joined.wait(timeout=5)
-                    ws.receive_json()                        # B-join broadcast
+                    ws.receive_json()  # B-join broadcast
                     ws.send_json({"type": "ROOM_START"})
-                    ws.receive_json()                        # start broadcast to A
+                    ws.receive_json()  # start broadcast to A
             except Exception as exc:
                 shared["error"] = exc
 
@@ -651,9 +660,9 @@ class TestMultiClientWebSocket:
                 with client.websocket_connect("/ws") as ws:
                     _ws_auth(ws, token_b)
                     ws.send_json({"type": "ROOM_JOIN", "data": {"room_code": shared["room_code"]}})
-                    ws.receive_json()                        # ROOM_STATE after join
+                    ws.receive_json()  # ROOM_STATE after join
                     b_joined.set()
-                    msg = ws.receive_json()                  # start broadcast to B
+                    msg = ws.receive_json()  # start broadcast to B
                     shared["b_start"] = msg
             except Exception as exc:
                 shared["error"] = exc
@@ -691,7 +700,7 @@ class TestMultiClientWebSocket:
                     shared["room_code"] = msg["data"]["room_code"]
                     a_created.set()
                     b_joined.wait(timeout=5)
-                    ws.receive_json()                        # B-join broadcast
+                    ws.receive_json()  # B-join broadcast
                     a_should_leave.wait(timeout=5)
                 # A's context exits here — endpoint finally block fires
             except Exception as exc:
@@ -703,11 +712,11 @@ class TestMultiClientWebSocket:
                 with client.websocket_connect("/ws") as ws:
                     _ws_auth(ws, token_b)
                     ws.send_json({"type": "ROOM_JOIN", "data": {"room_code": shared["room_code"]}})
-                    msg = ws.receive_json()                  # ROOM_STATE (2 members)
+                    msg = ws.receive_json()  # ROOM_STATE (2 members)
                     shared["b_msgs"].append(msg)
                     b_joined.set()
                     a_should_leave.set()
-                    msg2 = ws.receive_json()                 # ROOM_STATE after A disconnects
+                    msg2 = ws.receive_json()  # ROOM_STATE after A disconnects
                     shared["b_msgs"].append(msg2)
             except Exception as exc:
                 shared["error"] = exc

@@ -86,9 +86,7 @@ def public_state_to_dict(state: PublicMatchState) -> dict[str, Any]:
 
     Asserts that no private card fields are present before returning.
     """
-    board_rows = [
-        [match_card_to_dict(c) for c in row] for row in state.board_rows
-    ]
+    board_rows = [[match_card_to_dict(c) for c in row] for row in state.board_rows]
     played_this_turn = [match_card_to_dict(c) for c in state.played_cards_this_turn]
     seats = [seat_identity_to_dict(s) for s in state.seats]
 

@@ -45,6 +45,17 @@ class Settings(BaseSettings):
     RECONNECT_GRACE_SECONDS: int = 45
     CARD_SELECTION_TIMEOUT_SECONDS: int = 30
 
+    # Quick-match matchmaking (PR-06).
+    # QUICK_MATCH_FILL_SECONDS: how long to wait for a full 4-player lobby
+    #   before filling remaining seats with AI bots.
+    # DEFAULT_MMR: starting hidden MMR for new registered users.
+    #   Guests always use DEFAULT_MMR for bucket assignment; it is never stored.
+    # MMR_K_FACTOR: maximum MMR delta for a single match (full 4-human game).
+    #   Halved for 3-human matches; no update for ≤2 human seats.
+    QUICK_MATCH_FILL_SECONDS: int = 20
+    DEFAULT_MMR: int = 1000
+    MMR_K_FACTOR: int = 32
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

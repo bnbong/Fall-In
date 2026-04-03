@@ -16,13 +16,13 @@ from typing import Optional
 
 
 class RoomPhase(str, Enum):
-    WAITING = "waiting"      # accepting joins, host hasn't started
-    STARTING = "starting"    # host pressed start, bots filled, match engine pending
+    WAITING = "waiting"  # accepting joins, host hasn't started
+    STARTING = "starting"  # host pressed start, bots filled, match engine pending
 
 
 class SeatControllerType(str, Enum):
-    REMOTE = "remote"   # human connected via WebSocket
-    BOT = "bot"         # AI-controlled seat
+    REMOTE = "remote"  # human connected via WebSocket
+    BOT = "bot"  # AI-controlled seat
 
 
 @dataclass
@@ -31,7 +31,7 @@ class RoomParticipant:
     display_name: str
     controller_type: SeatControllerType
     is_ready: bool = False
-    user_id: Optional[str] = None       # None for guests and bots
+    user_id: Optional[str] = None  # None for guests and bots
     connection_id: Optional[str] = None  # None for bots
 
 
@@ -58,8 +58,7 @@ class Room:
 
     def human_count(self) -> int:
         return sum(
-            1 for p in self.participants.values()
-            if p.controller_type == SeatControllerType.REMOTE
+            1 for p in self.participants.values() if p.controller_type == SeatControllerType.REMOTE
         )
 
     def to_dict(self) -> dict:

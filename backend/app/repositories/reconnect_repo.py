@@ -40,13 +40,14 @@ class ReconnectEntry:
     seat_index: int
     user_id: Optional[str]
     display_name: str
-    account_type: str   # "registered" | "guest"
-    expires_at: float   # absolute time.time() deadline
+    account_type: str  # "registered" | "guest"
+    expires_at: float  # absolute time.time() deadline
 
 
 # ---------------------------------------------------------------------------
 # In-memory implementation
 # ---------------------------------------------------------------------------
+
 
 class InMemoryReconnectRepo:
     def __init__(self) -> None:
@@ -88,7 +89,8 @@ class InMemoryReconnectRepo:
 
     def revoke_by_match_seat(self, match_id: str, seat_index: int) -> None:
         to_delete = [
-            t for t, e in self._tokens.items()
+            t
+            for t, e in self._tokens.items()
             if e.match_id == match_id and e.seat_index == seat_index
         ]
         for t in to_delete:
@@ -107,6 +109,7 @@ class InMemoryReconnectRepo:
 # Redis implementation (optional)
 # ---------------------------------------------------------------------------
 
+
 class RedisReconnectRepo:
     """
     Redis-backed token store.  Requires ``redis[hiredis]``.
@@ -120,6 +123,7 @@ class RedisReconnectRepo:
 
     def __init__(self, redis_url: str) -> None:
         import redis as _redis  # optional dependency
+
         self._r = _redis.from_url(redis_url, decode_responses=True)
 
     def ping(self) -> None:
@@ -203,6 +207,7 @@ class RedisReconnectRepo:
 # Factory
 # ---------------------------------------------------------------------------
 
+
 def make_reconnect_repo(
     redis_url: Optional[str] = None,
 ) -> InMemoryReconnectRepo:  # return type is the base duck-type
@@ -217,6 +222,7 @@ def make_reconnect_repo(
             return repo  # type: ignore[return-value]
         except Exception as exc:
             import warnings
+
             warnings.warn(
                 f"Redis connection failed ({exc}); "
                 "falling back to in-memory reconnect token store.",

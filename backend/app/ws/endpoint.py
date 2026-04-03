@@ -32,16 +32,19 @@ from app.models.room import SeatControllerType
 from app.repositories.match_repo import InMemoryMatchRepo
 from app.repositories.room_repo import InMemoryRoomRepo
 from app.services.match_service import MatchService
+from app.services.matchmaking_service import MatchmakingService
+from app.services.matchmaking_service import matchmaking_service as _default_matchmaking_service
 from app.services.room_service import RoomService
 from app.ws.connection_manager import manager
 from app.ws.handler import _execute_turn, handle_message
-from app.ws.presence import PresenceManager, presence_manager as _default_presence_manager
+from app.ws.presence import PresenceManager
+from app.ws.presence import presence_manager as _default_presence_manager
 from app.ws.session import WsSession
 
 router = APIRouter()
 
 # Module-level singletons. Tests override get_room_service / get_match_service
-# / get_presence_manager via app.dependency_overrides.
+# / get_presence_manager / get_matchmaking_service via app.dependency_overrides.
 _room_repo = InMemoryRoomRepo()
 _room_service = RoomService(_room_repo)
 
@@ -64,9 +67,15 @@ def get_presence_manager() -> PresenceManager:
     return _default_presence_manager
 
 
+def get_matchmaking_service() -> MatchmakingService:
+    """Dependency — returns the shared MatchmakingService (overridable in tests)."""
+    return _default_matchmaking_service
+
+
 # ---------------------------------------------------------------------------
 # Heartbeat
 # ---------------------------------------------------------------------------
+
 
 async def _heartbeat_loop(ws: WebSocket, session: WsSession) -> None:
     """
@@ -99,6 +108,7 @@ async def _heartbeat_loop(ws: WebSocket, session: WsSession) -> None:
 # WebSocket endpoint
 # ---------------------------------------------------------------------------
 
+
 @router.websocket("/ws")
 async def websocket_endpoint(
     ws: WebSocket,
@@ -106,10 +116,12 @@ async def websocket_endpoint(
     room_service: RoomService = Depends(get_room_service),
     match_service: MatchService = Depends(get_match_service),
     presence_manager: PresenceManager = Depends(get_presence_manager),
+    matchmaking_service: MatchmakingService = Depends(get_matchmaking_service),
 ) -> None:
     conn_id = str(uuid.uuid4())
     await manager.connect(ws, conn_id)
     session = WsSession(connection_id=conn_id)
+    manager.register_session(conn_id, session)
 
     heartbeat = asyncio.create_task(_heartbeat_loop(ws, session))
 
@@ -120,21 +132,32 @@ async def websocket_endpoint(
             except Exception:
                 break
             await handle_message(
-                ws, session, raw, manager,
-                room_service, match_service, presence_manager, db,
+                ws,
+                session,
+                raw,
+                manager,
+                room_service,
+                match_service,
+                presence_manager,
+                matchmaking_service,
+                db,
             )
     except WebSocketDisconnect:
         pass
     finally:
         heartbeat.cancel()
 
+        # Clean up queue membership on disconnect.
+        if session.in_queue:
+            entry = matchmaking_service.leave_queue(session.connection_id)
+            session.in_queue = False
+            if entry is not None and matchmaking_service.bucket_size(entry.bucket) == 0:
+                matchmaking_service.cancel_fill_timer(entry.bucket)
+
         if session.in_room:
             active_match = match_service.get_match_by_room(session.room_code)
 
-            if (
-                active_match is not None
-                and session.seat_index is not None
-            ):
+            if active_match is not None and session.seat_index is not None:
                 seat = active_match.seats.get(session.seat_index)
                 if (
                     seat is not None
@@ -143,10 +166,13 @@ async def websocket_endpoint(
                 ):
                     # In-match disconnect: preserve state, start grace timer.
                     match_service.mark_seat_disconnected(active_match, session.seat_index)
-                    await manager.broadcast_to_room(session.room_code, {
-                        "type": "PLAYER_DISCONNECTED",
-                        "data": {"seat_index": session.seat_index},
-                    })
+                    await manager.broadcast_to_room(
+                        session.room_code,
+                        {
+                            "type": "PLAYER_DISCONNECTED",
+                            "data": {"seat_index": session.seat_index},
+                        },
+                    )
 
                     async def _on_turn_ready(rc: str, m) -> None:
                         await _execute_turn(rc, m, manager, match_service, presence_manager)
@@ -165,9 +191,12 @@ async def websocket_endpoint(
                 # In-lobby disconnect: leave room normally.
                 updated = room_service.leave_room(session.room_code, session.seat_index)
                 if updated:
-                    await manager.broadcast_to_room(session.room_code, {
-                        "type": "ROOM_STATE",
-                        "data": updated.to_dict(),
-                    })
+                    await manager.broadcast_to_room(
+                        session.room_code,
+                        {
+                            "type": "ROOM_STATE",
+                            "data": updated.to_dict(),
+                        },
+                    )
 
         manager.disconnect(conn_id, session.room_code)

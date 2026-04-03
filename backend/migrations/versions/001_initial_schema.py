@@ -48,7 +48,12 @@ def upgrade() -> None:
 
     op.create_table(
         "profiles",
-        sa.Column("user_id", sa.String(36), sa.ForeignKey("users.id", ondelete="CASCADE"), primary_key=True),
+        sa.Column(
+            "user_id",
+            sa.String(36),
+            sa.ForeignKey("users.id", ondelete="CASCADE"),
+            primary_key=True,
+        ),
         sa.Column("nickname", sa.String(50), nullable=False),
         sa.Column("avatar_id", sa.String(50), nullable=True),
         sa.Column("currency", sa.Integer(), nullable=False, server_default="0"),
@@ -66,7 +71,12 @@ def upgrade() -> None:
 
     op.create_table(
         "user_collection",
-        sa.Column("user_id", sa.String(36), sa.ForeignKey("users.id", ondelete="CASCADE"), primary_key=True),
+        sa.Column(
+            "user_id",
+            sa.String(36),
+            sa.ForeignKey("users.id", ondelete="CASCADE"),
+            primary_key=True,
+        ),
         sa.Column("soldier_id", sa.Integer(), primary_key=True),
         sa.Column(
             "unlocked_at",

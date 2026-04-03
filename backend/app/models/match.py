@@ -15,12 +15,10 @@ Design rules (from multiplayer plan):
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
-    from fall_in.core.rules import GameRules
-    from fall_in.core.board import PlacementResult
-    from fall_in.ai.ai_player import AIPlayer
+    pass
 
 from app.models.room import SeatControllerType
 
@@ -30,11 +28,15 @@ class MatchSeat:
     """Per-seat match identity: maps a room participant to a GameRules Player."""
 
     seat_index: int
-    player: object              # fall_in.core.player.Player (typed as object to avoid circular import at module load)
+    # fall_in.core.player.Player — typed as object to avoid circular import at module load
+    player: object
     connection_id: Optional[str]  # None for bots; cleared on disconnect
-    user_id: Optional[str]        # None for guests and bots
+    user_id: Optional[str]  # None for guests and bots
     display_name: str
     controller_type: SeatControllerType
+    # "registered" | "guest" | "bot" — used by MmrService to determine whether
+    # MMR should be persisted for this seat after the match ends.
+    account_type: str = "guest"
     ai_controller: Optional[object] = None  # fall_in.ai.ai_player.AIPlayer; None for human seats
 
     # Presence / reconnect state (PR-05).
@@ -57,7 +59,7 @@ class TurnStep:
     row_index: int
     penalty_score: int
     had_to_take_row: bool
-    order: int          # 1-based placement order
+    order: int  # 1-based placement order
 
 
 @dataclass
@@ -65,8 +67,8 @@ class RoundSummary:
     """Scores and elimination info produced by MatchService.finalize_round()."""
 
     round_number: int
-    round_danger: dict[int, int]   # seat_index -> danger this round
-    total_scores: dict[int, int]   # seat_index -> cumulative danger
+    round_danger: dict[int, int]  # seat_index -> danger this round
+    total_scores: dict[int, int]  # seat_index -> cumulative danger
     eliminated_seats: list[int]
     game_over: bool
     winner_seat: Optional[int]
@@ -78,9 +80,9 @@ class ActiveMatch:
 
     match_id: str
     room_code: str
-    rules: object                           # fall_in.core.rules.GameRules
-    seats: dict[int, MatchSeat]             # seat_index -> MatchSeat
-    player_to_seat: dict[int, int]          # player_id -> seat_index
+    rules: object  # fall_in.core.rules.GameRules
+    seats: dict[int, MatchSeat]  # seat_index -> MatchSeat
+    player_to_seat: dict[int, int]  # player_id -> seat_index
 
     # Parallel ownership tracking for board rows.
     # board_row_owners[row_idx][pos] = seat_index (-1 for starter cards).
@@ -92,3 +94,8 @@ class ActiveMatch:
     # Timestamp (time.time()) set when the SELECTING phase begins.
     # Used by the card-selection timeout task to know when the timer started.
     selection_started_at: Optional[float] = None
+
+    # True when this match was created from the quick-match queue (PR-06).
+    # Determines whether MMR updates are applied after the game ends.
+    # Custom-room matches always have is_ranked=False.
+    is_ranked: bool = False

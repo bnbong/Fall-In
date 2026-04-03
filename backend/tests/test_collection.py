@@ -9,21 +9,23 @@ Critical invariants verified:
   5. hidden_mmr is NOT present in any profile response.
 """
 
-import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _register_and_get_token(client: TestClient, email: str, nickname: str = "Player") -> str:
-    resp = client.post("/auth/register", json={
-        "email": email,
-        "password": "password123",
-        "nickname": nickname,
-    })
+    resp = client.post(
+        "/auth/register",
+        json={
+            "email": email,
+            "password": "password123",
+            "nickname": nickname,
+        },
+    )
     assert resp.status_code == 201, resp.json()
     return resp.json()["access_token"]
 
@@ -41,6 +43,7 @@ def _auth(token: str) -> dict:
 # ---------------------------------------------------------------------------
 # Profile endpoint
 # ---------------------------------------------------------------------------
+
 
 class TestProfile:
     def test_registered_user_gets_correct_profile(self, client):
@@ -81,6 +84,7 @@ class TestProfile:
 # ---------------------------------------------------------------------------
 # Collection endpoint — registered users
 # ---------------------------------------------------------------------------
+
 
 class TestCollection:
     def test_empty_collection_for_new_registered_user(self, client):
@@ -128,6 +132,7 @@ class TestCollection:
 # Collection isolation — the critical multiplayer invariant
 # ---------------------------------------------------------------------------
 
+
 class TestCollectionIsolation:
     """
     Verify that user A's collection is never visible to user B.
@@ -143,7 +148,7 @@ class TestCollectionIsolation:
         token_b = _register_and_get_token(client, "userb@example.com", nickname="UserB")
 
         user_a_id = client.get("/me/profile", headers=_auth(token_a)).json()["user_id"]
-        user_b_id = client.get("/me/profile", headers=_auth(token_b)).json()["user_id"]
+        client.get("/me/profile", headers=_auth(token_b)).json()["user_id"]
 
         # Give user A soldier 42
         collection_repo.add_soldier(db, user_a_id, 42, source="test")
@@ -180,8 +185,14 @@ class TestCollectionIsolation:
         collection_repo.add_soldier(db, id_a, 77)
         collection_repo.add_soldier(db, id_b, 55)
 
-        a_ids = {item["soldier_id"] for item in client.get("/me/collection", headers=_auth(token_a)).json()["items"]}
-        b_ids = {item["soldier_id"] for item in client.get("/me/collection", headers=_auth(token_b)).json()["items"]}
+        a_ids = {
+            item["soldier_id"]
+            for item in client.get("/me/collection", headers=_auth(token_a)).json()["items"]
+        }
+        b_ids = {
+            item["soldier_id"]
+            for item in client.get("/me/collection", headers=_auth(token_b)).json()["items"]
+        }
 
         assert a_ids == {42, 77}
         assert b_ids == {55}
@@ -191,6 +202,7 @@ class TestCollectionIsolation:
 # ---------------------------------------------------------------------------
 # Guest collection restrictions
 # ---------------------------------------------------------------------------
+
 
 class TestGuestCollectionRestrictions:
     def test_guest_cannot_read_collection(self, client):

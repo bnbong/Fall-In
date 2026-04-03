@@ -34,9 +34,11 @@ from fall_in.core.card import Card
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_card(number: int = 42) -> Card:
     """Create a Card with all private cosmetic fields populated."""
     from fall_in.core.card import calculate_danger
+
     return Card(
         number=number,
         danger=calculate_danger(number),
@@ -51,6 +53,7 @@ def _make_card(number: int = 42) -> Card:
 
 def _make_public_card(number: int = 42, owner_seat: int = 0) -> MatchCardPublic:
     from fall_in.core.card import calculate_danger
+
     return MatchCardPublic(
         number=number,
         danger=calculate_danger(number),
@@ -58,7 +61,9 @@ def _make_public_card(number: int = 42, owner_seat: int = 0) -> MatchCardPublic:
     )
 
 
-def _make_seat(seat_index: int = 0, controller_type: ControllerType = ControllerType.LOCAL) -> SeatIdentity:
+def _make_seat(
+    seat_index: int = 0, controller_type: ControllerType = ControllerType.LOCAL
+) -> SeatIdentity:
     return SeatIdentity(
         seat_index=seat_index,
         controller_type=controller_type,
@@ -66,7 +71,9 @@ def _make_seat(seat_index: int = 0, controller_type: ControllerType = Controller
     )
 
 
-def _make_public_state(board_cards: list[MatchCardPublic] | None = None) -> PublicMatchState:
+def _make_public_state(
+    board_cards: list[MatchCardPublic] | None = None,
+) -> PublicMatchState:
     cards = board_cards or [_make_public_card(10, 0)]
     return PublicMatchState(
         match_id="test-match-001",
@@ -83,6 +90,7 @@ def _make_public_state(board_cards: list[MatchCardPublic] | None = None) -> Publ
 # ---------------------------------------------------------------------------
 # MatchCardPublic field contract
 # ---------------------------------------------------------------------------
+
 
 class TestMatchCardPublicFields:
     """MatchCardPublic must have exactly the three allowed fields."""
@@ -114,6 +122,7 @@ class TestMatchCardPublicFields:
 # Serialiser — single card
 # ---------------------------------------------------------------------------
 
+
 class TestMatchCardToDict:
     """card_to_public_dto must strip all private fields."""
 
@@ -142,6 +151,7 @@ class TestMatchCardToDict:
 # Serialiser — public state
 # ---------------------------------------------------------------------------
 
+
 class TestPublicStateSerialization:
     """public_state_to_dict must produce a clean wire-safe dict."""
 
@@ -149,9 +159,14 @@ class TestPublicStateSerialization:
         state = _make_public_state()
         d = public_state_to_dict(state)
         expected_keys = {
-            "match_id", "round_number", "phase",
-            "player_order_seats", "board_rows",
-            "played_cards_this_turn", "committed_scores", "seats",
+            "match_id",
+            "round_number",
+            "phase",
+            "player_order_seats",
+            "board_rows",
+            "played_cards_this_turn",
+            "committed_scores",
+            "seats",
         }
         assert set(d.keys()) == expected_keys
 
@@ -168,7 +183,10 @@ class TestPublicStateSerialization:
 
     def test_played_cards_this_turn_have_no_private_fields(self):
         state = _make_public_state()
-        state.played_cards_this_turn = [_make_public_card(42, 1), _make_public_card(77, 2)]
+        state.played_cards_this_turn = [
+            _make_public_card(42, 1),
+            _make_public_card(77, 2),
+        ]
         d = public_state_to_dict(state)
         for card_dict in d["played_cards_this_turn"]:
             for field_name in _PRIVATE_CARD_FIELDS:
@@ -181,6 +199,7 @@ class TestPublicStateSerialization:
         """
         # We test the assertion helper directly.
         from fall_in.net.serializers import _assert_no_private_fields
+
         bad_dict = {"number": 1, "danger": 1, "owner_seat": 0, "is_collected": True}
         with pytest.raises(AssertionError, match="is_collected"):
             _assert_no_private_fields(bad_dict, context="test")
@@ -205,6 +224,7 @@ class TestPublicStateSerialization:
 # ---------------------------------------------------------------------------
 # Serialiser — private state
 # ---------------------------------------------------------------------------
+
 
 class TestPrivateStateSerialization:
     """private_state_to_dict reflects hand cards — these stay private."""
@@ -234,6 +254,7 @@ class TestPrivateStateSerialization:
 # ---------------------------------------------------------------------------
 # State separation — public never exposes private
 # ---------------------------------------------------------------------------
+
 
 class TestStateSeparation:
     """PublicMatchState and PrivatePlayerState are distinct, non-overlapping objects."""
@@ -270,6 +291,7 @@ class TestStateSeparation:
 # AccountProgressRef — local-only, not broadcast
 # ---------------------------------------------------------------------------
 
+
 class TestAccountProgressRef:
     """AccountProgressRef is a local-only object; it has no serialiser."""
 
@@ -288,6 +310,7 @@ class TestAccountProgressRef:
     def test_account_progress_ref_has_no_serialiser(self):
         """There must be no public serialise function for AccountProgressRef."""
         import fall_in.net.serializers as ser
+
         # Verify no function named *_account_progress* is exported
         public_names = [n for n in dir(ser) if not n.startswith("_")]
         for name in public_names:
@@ -299,6 +322,7 @@ class TestAccountProgressRef:
 # ---------------------------------------------------------------------------
 # Viewer projection
 # ---------------------------------------------------------------------------
+
 
 class TestResolveCardVisual:
     """resolve_card_visual enforces the cosmetic projection rules."""
@@ -357,9 +381,19 @@ class TestResolveCardVisual:
         collection = {42}  # viewer has collected this card
 
         # Own card → personalised
-        own = resolve_card_visual(card_number, owner_seat=0, viewer_seat=viewer_seat, viewer_collection=collection)
+        own = resolve_card_visual(
+            card_number,
+            owner_seat=0,
+            viewer_seat=viewer_seat,
+            viewer_collection=collection,
+        )
         # Other player's card → unknown
-        other = resolve_card_visual(card_number, owner_seat=1, viewer_seat=viewer_seat, viewer_collection=collection)
+        other = resolve_card_visual(
+            card_number,
+            owner_seat=1,
+            viewer_seat=viewer_seat,
+            viewer_collection=collection,
+        )
 
         assert own == "soldier_42"
         assert other == "unknown_default"
@@ -369,6 +403,7 @@ class TestResolveCardVisual:
 # ---------------------------------------------------------------------------
 # Card → public DTO conversion (using a Card domain object)
 # ---------------------------------------------------------------------------
+
 
 class TestCardDomainToPublicDto:
     """

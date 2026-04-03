@@ -18,7 +18,6 @@ Key behaviors locked in here:
     replace with a seat/controller model.
 """
 
-import random
 import pytest
 
 from fall_in.core.card import Card, calculate_danger
@@ -30,6 +29,7 @@ from fall_in.core.rules import GameRules, RoundPhase
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_players() -> list[Player]:
     """4 players as the game normally creates them."""
@@ -48,6 +48,7 @@ def _card(number: int) -> Card:
 # Initialisation
 # ---------------------------------------------------------------------------
 
+
 class TestGameRulesInit:
     def test_requires_exactly_four_players(self):
         three = create_players(ai_count=2)
@@ -65,7 +66,9 @@ class TestGameRulesInit:
     def test_player_order_contains_all_players(self):
         rules = _make_rules()
         # Player is not hashable (custom __eq__ without __hash__), use sorted lists
-        assert sorted(p.player_id for p in rules.player_order) == sorted(p.player_id for p in rules.players)
+        assert sorted(p.player_id for p in rules.player_order) == sorted(
+            p.player_id for p in rules.players
+        )
         assert len(rules.player_order) == 4
 
     def test_initial_phase_is_dealing(self):
@@ -82,6 +85,7 @@ class TestGameRulesInit:
 # player_order rotation (not ascending number order)
 # ---------------------------------------------------------------------------
 
+
 class TestPlayerOrderRotation:
     def test_first_round_order_is_randomised(self):
         """player_order is randomised; with enough attempts it should differ."""
@@ -93,11 +97,12 @@ class TestPlayerOrderRotation:
             if r.player_order != original_order:
                 seen_different = True
                 break
-        assert seen_different, "player_order never differed from players list in 50 attempts"
+        assert seen_different, (
+            "player_order never differed from players list in 50 attempts"
+        )
 
     def test_second_round_rotates_head_to_tail(self):
         rules = _make_rules()
-        order_before = rules.player_order.copy()
 
         rules.start_new_round()  # Round 1 — sets order, no rotation yet
         order_round1 = rules.player_order.copy()
@@ -105,8 +110,8 @@ class TestPlayerOrderRotation:
         rules.start_new_round()  # Round 2 — rotate: head → tail
         order_round2 = rules.player_order
 
-        assert order_round2[:-1] == order_round1[1:]   # tail unchanged
-        assert order_round2[-1] == order_round1[0]     # old head is now tail
+        assert order_round2[:-1] == order_round1[1:]  # tail unchanged
+        assert order_round2[-1] == order_round1[0]  # old head is now tail
 
     def test_rotation_cycles_all_four_positions(self):
         rules = _make_rules()
@@ -123,6 +128,7 @@ class TestPlayerOrderRotation:
 # ---------------------------------------------------------------------------
 # Resolution order follows player_order, NOT ascending card number
 # ---------------------------------------------------------------------------
+
 
 class TestPlayOrderIsPlayerOrder:
     """
@@ -183,6 +189,7 @@ class TestPlayOrderIsPlayerOrder:
 # Forced lowest-penalty row (no player choice for smallest card)
 # ---------------------------------------------------------------------------
 
+
 class TestForcedLowestPenaltyRow:
     """
     When a card is smaller than all row-end cards, the game AUTOMATICALLY
@@ -194,12 +201,14 @@ class TestForcedLowestPenaltyRow:
     def test_card_smaller_than_all_rows_auto_selects_lowest_penalty(self):
         board = Board()
         # Row dangers: row0=7(card66), row1=5(card11), row2=3(card30), row3=1(card1)
-        board.initialize_rows([
-            _card(66),   # danger 7
-            _card(11),   # danger 5
-            _card(30),   # danger 3
-            _card(99),   # danger 5
-        ])
+        board.initialize_rows(
+            [
+                _card(66),  # danger 7
+                _card(11),  # danger 5
+                _card(30),  # danger 3
+                _card(99),  # danger 5
+            ]
+        )
 
         tiny = _card(1)
         assert board.is_card_smaller_than_all(tiny)
@@ -275,6 +284,7 @@ class TestForcedLowestPenaltyRow:
 # Sixth card penalty
 # ---------------------------------------------------------------------------
 
+
 class TestSixthCardPenalty:
     def test_placing_sixth_card_takes_five_penalty_cards(self):
         board = Board()
@@ -298,7 +308,9 @@ class TestSixthCardPenalty:
         # Manually set up a board where the first player will take a penalty
         rules.board.rows = [
             [_card(10), _card(11), _card(12), _card(13), _card(14)],  # 5 cards
-            [_card(30)], [_card(50)], [_card(70)],
+            [_card(30)],
+            [_card(50)],
+            [_card(70)],
         ]
         po = rules.player_order
         # player_order[0] plays card 15 → 6th card → takes 5 penalty cards
@@ -322,6 +334,7 @@ class TestSixthCardPenalty:
 # ---------------------------------------------------------------------------
 # Round flow
 # ---------------------------------------------------------------------------
+
 
 class TestRoundFlow:
     def test_start_new_round_deals_ten_cards_per_player(self):
@@ -383,7 +396,9 @@ class TestRoundFlow:
         # Artificially add some penalty cards to round state
         target = rules.players[0]
         penalty_card = _card(66)  # danger 7
-        rules.round_state.round_penalties[target.player_id].cards_taken.append(penalty_card)
+        rules.round_state.round_penalties[target.player_id].cards_taken.append(
+            penalty_card
+        )
 
         results = rules.commit_round_scores()
         round_danger, new_total = results[target.player_id]
@@ -394,6 +409,7 @@ class TestRoundFlow:
 # ---------------------------------------------------------------------------
 # Known assumption: players[0] == human (documented for future replacement)
 # ---------------------------------------------------------------------------
+
 
 class TestPlayerZeroHumanAssumption:
     """
@@ -439,6 +455,7 @@ class TestPlayerZeroHumanAssumption:
 # Penalty tracking per player_id (not per index)
 # ---------------------------------------------------------------------------
 
+
 class TestPenaltyTracking:
     def test_round_penalties_keyed_by_player_id(self):
         rules = _make_rules()
@@ -451,7 +468,9 @@ class TestPenaltyTracking:
         rules.start_new_round()
 
         target = rules.player_order[0]
-        rules.round_state.round_penalties[target.player_id].cards_taken.append(_card(66))
+        rules.round_state.round_penalties[target.player_id].cards_taken.append(
+            _card(66)
+        )
 
         assert rules.round_state.round_penalties[target.player_id].total_danger == 7
         for p in rules.players:

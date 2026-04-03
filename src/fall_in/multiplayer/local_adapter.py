@@ -18,10 +18,9 @@ Design notes:
 
 from __future__ import annotations
 
-from typing import Optional
 
 from fall_in.ai.ai_player import AIPlayer
-from fall_in.core.rules import GameRules, RoundPhase
+from fall_in.core.rules import GameRules
 from fall_in.multiplayer.models import (
     ControllerType,
     MatchCardPublic,
@@ -117,7 +116,9 @@ class LocalGameAdapter:
         results: list[tuple[int, MatchCardPublic]] = []
 
         for order_idx, (player, card) in enumerate(play_order):
-            turn_result = self._rules.execute_single_placement(player, card, order_idx + 1)
+            turn_result = self._rules.execute_single_placement(
+                player, card, order_idx + 1
+            )
             placement = turn_result.result  # fall_in.core.board.PlacementResult
             seat_idx = self._player_to_seat[player.player_id]
 
@@ -170,14 +171,16 @@ class LocalGameAdapter:
                 if row_idx < len(self._board_row_owners)
                 else []
             )
-            board_rows.append([
-                MatchCardPublic(
-                    number=c.number,
-                    danger=c.danger,
-                    owner_seat=owners[pos] if pos < len(owners) else -1,
-                )
-                for pos, c in enumerate(row)
-            ])
+            board_rows.append(
+                [
+                    MatchCardPublic(
+                        number=c.number,
+                        danger=c.danger,
+                        owner_seat=owners[pos] if pos < len(owners) else -1,
+                    )
+                    for pos, c in enumerate(row)
+                ]
+            )
 
         player_order_seats = [
             self._player_to_seat[p.player_id]

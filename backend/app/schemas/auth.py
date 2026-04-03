@@ -28,12 +28,14 @@ class RefreshRequest(BaseModel):
 
 class TokenResponse(BaseModel):
     """Minimal token response (used for refresh endpoint)."""
+
     access_token: str
     token_type: str = "bearer"
 
 
 class AuthResponse(BaseModel):
     """Full auth response (register / login / guest)."""
+
     access_token: str
     token_type: str = "bearer"
     refresh_token: Optional[str] = None  # None for guest accounts

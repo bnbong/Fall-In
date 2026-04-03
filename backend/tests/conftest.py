@@ -30,6 +30,7 @@ from app.main import app
 def reset_ws_manager():
     """Reset the WebSocket connection manager between tests."""
     from app.ws.connection_manager import manager
+
     manager.reset()
     yield
     manager.reset()
@@ -39,6 +40,7 @@ def reset_ws_manager():
 def reset_match_service():
     """Reset the module-level MatchService singleton between tests."""
     from app.ws.endpoint import _match_service
+
     _match_service.reset()
     yield
     _match_service.reset()
@@ -54,9 +56,20 @@ def reset_presence_manager():
     tokens issued in one test are never visible in the next.
     """
     from app.ws.presence import presence_manager
+
     presence_manager.reset()
     yield
     presence_manager.reset()
+
+
+@pytest.fixture(autouse=True)
+def reset_matchmaking_service():
+    """Cancel all fill-timer tasks and clear the quick-match queue between tests."""
+    from app.services.matchmaking_service import matchmaking_service
+
+    matchmaking_service.reset()
+    yield
+    matchmaking_service.reset()
 
 
 @pytest.fixture()

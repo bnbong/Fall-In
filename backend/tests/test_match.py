@@ -8,17 +8,6 @@ Structure:
 """
 
 import pytest
-from fastapi.testclient import TestClient
-
-from app.database import get_db
-from app.main import app
-from app.models.room import Room, RoomParticipant, RoomPhase, SeatControllerType
-from app.repositories.match_repo import InMemoryMatchRepo
-from app.repositories.room_repo import InMemoryRoomRepo
-from app.services.match_service import MatchError, MatchService
-from app.services.room_service import RoomService
-from app.ws.endpoint import get_match_service, get_room_service
-
 from fall_in.core.rules import RoundPhase
 from fall_in.multiplayer.models import MatchCardPublic
 from fall_in.net.serializers import (
@@ -26,11 +15,21 @@ from fall_in.net.serializers import (
     private_state_to_dict,
     public_state_to_dict,
 )
+from fastapi.testclient import TestClient
 
+from app.database import get_db
+from app.main import app
+from app.models.room import Room, SeatControllerType
+from app.repositories.match_repo import InMemoryMatchRepo
+from app.repositories.room_repo import InMemoryRoomRepo
+from app.services.match_service import MatchError, MatchService
+from app.services.room_service import RoomService
+from app.ws.endpoint import get_match_service, get_room_service
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture()
 def room_service():
@@ -59,6 +58,7 @@ def client(db, room_service, match_service) -> TestClient:
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_full_room(room_service: RoomService, host_name: str = "Host") -> Room:
     """Create a room with seat 0 = REMOTE (host), seats 1-3 = BOT."""
     room = room_service.create_room(
@@ -72,11 +72,14 @@ def _make_full_room(room_service: RoomService, host_name: str = "Host") -> Room:
 
 
 def _register(client: TestClient, email: str, nickname: str) -> str:
-    resp = client.post("/auth/register", json={
-        "email": email,
-        "password": "password123",
-        "nickname": nickname,
-    })
+    resp = client.post(
+        "/auth/register",
+        json={
+            "email": email,
+            "password": "password123",
+            "nickname": nickname,
+        },
+    )
     return resp.json()["access_token"]
 
 
@@ -99,6 +102,7 @@ def _consume_until(ws, target_type: str, max_msgs: int = 20) -> dict:
 # ---------------------------------------------------------------------------
 # TestMatchService — unit tests
 # ---------------------------------------------------------------------------
+
 
 class TestMatchService:
     def test_create_match_produces_four_seats(self, match_service, room_service):
@@ -267,6 +271,7 @@ class TestMatchService:
 # TestMatchDtoSafety — DTO boundary tests
 # ---------------------------------------------------------------------------
 
+
 class TestMatchDtoSafety:
     def test_public_state_no_private_card_fields(self, match_service, room_service):
         room = _make_full_room(room_service)
@@ -287,9 +292,7 @@ class TestMatchDtoSafety:
         d = private_state_to_dict(priv)
         for card_dict in d["hand"]:
             for field in _PRIVATE_CARD_FIELDS:
-                assert field not in card_dict, (
-                    f"Private field {field!r} leaked into hand card"
-                )
+                assert field not in card_dict, f"Private field {field!r} leaked into hand card"
 
     def test_hand_card_owner_seat_is_viewer_seat(self, match_service, room_service):
         room = _make_full_room(room_service)
@@ -307,9 +310,7 @@ class TestMatchDtoSafety:
         pub = match_service.build_public_state(match)
         d = public_state_to_dict(pub)
         for seat_dict in d["seats"]:
-            assert "user_id" not in seat_dict, (
-                "user_id must not appear in wire-level seat dict"
-            )
+            assert "user_id" not in seat_dict, "user_id must not appear in wire-level seat dict"
 
     def test_public_state_has_four_seats(self, match_service, room_service):
         room = _make_full_room(room_service)
@@ -317,25 +318,19 @@ class TestMatchDtoSafety:
         pub = match_service.build_public_state(match)
         assert len(pub.seats) == 4
 
-    def test_public_state_phase_is_selecting_at_round_start(
-        self, match_service, room_service
-    ):
+    def test_public_state_phase_is_selecting_at_round_start(self, match_service, room_service):
         room = _make_full_room(room_service)
         match = match_service.create_match(room)
         pub = match_service.build_public_state(match)
         assert pub.phase == RoundPhase.SELECTING.name
 
-    def test_private_state_has_selected_false_at_start(
-        self, match_service, room_service
-    ):
+    def test_private_state_has_selected_false_at_start(self, match_service, room_service):
         room = _make_full_room(room_service)
         match = match_service.create_match(room)
         priv = match_service.build_private_state(match, 0)
         assert priv.has_selected is False
 
-    def test_private_state_has_selected_true_after_selection(
-        self, match_service, room_service
-    ):
+    def test_private_state_has_selected_true_after_selection(self, match_service, room_service):
         room = _make_full_room(room_service)
         match = match_service.create_match(room)
         card = match.seats[0].player.hand[0]
@@ -343,17 +338,13 @@ class TestMatchDtoSafety:
         priv = match_service.build_private_state(match, 0)
         assert priv.has_selected is True
 
-    def test_board_row_owners_initialised_with_starters(
-        self, match_service, room_service
-    ):
+    def test_board_row_owners_initialised_with_starters(self, match_service, room_service):
         room = _make_full_room(room_service)
         match = match_service.create_match(room)
         for owners in match.board_row_owners:
             assert owners == [-1], "Starter cards must have owner_seat -1"
 
-    def test_board_cards_have_public_number_and_danger(
-        self, match_service, room_service
-    ):
+    def test_board_cards_have_public_number_and_danger(self, match_service, room_service):
         room = _make_full_room(room_service)
         match = match_service.create_match(room)
         pub = match_service.build_public_state(match)
@@ -368,6 +359,7 @@ class TestMatchDtoSafety:
 # TestMatchWebSocket — integration tests via /ws
 # ---------------------------------------------------------------------------
 
+
 class TestMatchWebSocket:
     def test_room_start_broadcasts_match_start(self, client):
         token = _register(client, "ms_host@example.com", "MSHost")
@@ -376,7 +368,7 @@ class TestMatchWebSocket:
             ws.send_json({"type": "ROOM_CREATE", "data": {}})
             _consume_until(ws, "ROOM_STATE")
             ws.send_json({"type": "ROOM_START", "data": {}})
-            _consume_until(ws, "ROOM_STATE")   # STARTING lobby state
+            _consume_until(ws, "ROOM_STATE")  # STARTING lobby state
             msg = _consume_until(ws, "MATCH_START")
             assert msg["data"]["match_id"]
 
@@ -584,6 +576,7 @@ class TestMatchWebSocket:
 # Regression tests for code-review fixes
 # ---------------------------------------------------------------------------
 
+
 class TestRegressionFixes:
     """
     Targeted tests for the four issues found in the PR-04 code review.
@@ -626,10 +619,12 @@ class TestRegressionFixes:
                 hand_msg = _consume_until(ws_guest, "PRIVATE_HAND_STATE")
 
                 card_number = hand_msg["data"]["hand"][0]["number"]
-                ws_guest.send_json({
-                    "type": "CARD_SELECT",
-                    "data": {"card_number": card_number},
-                })
+                ws_guest.send_json(
+                    {
+                        "type": "CARD_SELECT",
+                        "data": {"card_number": card_number},
+                    }
+                )
                 # Must NOT return NOT_IN_MATCH; must ack with updated hand state.
                 ack = _consume_until(ws_guest, "PRIVATE_HAND_STATE")
                 assert ack["data"]["has_selected"] is True
@@ -688,9 +683,7 @@ class TestRegressionFixes:
     # Fix 3: multiplayer game-end logic
     # ------------------------------------------------------------------
 
-    def test_multiplayer_game_does_not_end_when_seat0_eliminated(
-        self, match_service, room_service
-    ):
+    def test_multiplayer_game_does_not_end_when_seat0_eliminated(self, match_service, room_service):
         """
         In multiplayer mode (human_seat=None), eliminating seat 0 alone must
         NOT end the game while other players remain active.
@@ -711,9 +704,7 @@ class TestRegressionFixes:
         # Three other players are still active → game must NOT be over.
         assert not rules.game_over
 
-    def test_multiplayer_game_ends_when_one_survivor_remains(
-        self, match_service, room_service
-    ):
+    def test_multiplayer_game_ends_when_one_survivor_remains(self, match_service, room_service):
         """Game ends when only 1 active player survives (multiplayer mode)."""
         room = _make_full_room(room_service)
         match = match_service.create_match(room)
@@ -734,9 +725,7 @@ class TestRegressionFixes:
     # Fix 4: stepwise board snapshots
     # ------------------------------------------------------------------
 
-    def test_resolve_turn_stepwise_returns_four_entries(
-        self, match_service, room_service
-    ):
+    def test_resolve_turn_stepwise_returns_four_entries(self, match_service, room_service):
         room = _make_full_room(room_service)
         match = match_service.create_match(room)
         card = match.seats[0].player.hand[0]
@@ -744,9 +733,7 @@ class TestRegressionFixes:
         results = match_service.resolve_turn_stepwise(match)
         assert len(results) == 4
 
-    def test_resolve_turn_stepwise_snapshots_grow_incrementally(
-        self, match_service, room_service
-    ):
+    def test_resolve_turn_stepwise_snapshots_grow_incrementally(self, match_service, room_service):
         """Each snapshot's played_cards_this_turn must be one longer than the previous."""
         room = _make_full_room(room_service)
         match = match_service.create_match(room)

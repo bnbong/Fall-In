@@ -79,6 +79,15 @@ class MatchService:
 
             ai_ctrl: Optional[AIPlayer] = AIPlayer(player) if is_bot else None
 
+            # Derive account_type from the seat's identity:
+            # bots are "bot"; registered users have a user_id; guests do not.
+            if is_bot:
+                account_type = "bot"
+            elif participant.user_id is not None:
+                account_type = "registered"
+            else:
+                account_type = "guest"
+
             seats[seat_idx] = MatchSeat(
                 seat_index=seat_idx,
                 player=player,
@@ -86,6 +95,7 @@ class MatchService:
                 user_id=participant.user_id,
                 display_name=participant.display_name,
                 controller_type=participant.controller_type,
+                account_type=account_type,
                 ai_controller=ai_ctrl,
             )
 
@@ -153,9 +163,7 @@ class MatchService:
     # Card selection
     # ------------------------------------------------------------------
 
-    def submit_selection(
-        self, match: ActiveMatch, seat_index: int, card_number: int
-    ) -> None:
+    def submit_selection(self, match: ActiveMatch, seat_index: int, card_number: int) -> None:
         """
         Record a human seat's card selection.
 
@@ -348,30 +356,27 @@ class MatchService:
         board_rows: list[list[MatchCardPublic]] = []
         for row_idx, row in enumerate(rules.board.rows):
             owners = (
-                match.board_row_owners[row_idx]
-                if row_idx < len(match.board_row_owners)
-                else []
+                match.board_row_owners[row_idx] if row_idx < len(match.board_row_owners) else []
             )
-            board_rows.append([
-                MatchCardPublic(
-                    number=c.number,
-                    danger=c.danger,
-                    owner_seat=owners[pos] if pos < len(owners) else -1,
-                )
-                for pos, c in enumerate(row)
-            ])
+            board_rows.append(
+                [
+                    MatchCardPublic(
+                        number=c.number,
+                        danger=c.danger,
+                        owner_seat=owners[pos] if pos < len(owners) else -1,
+                    )
+                    for pos, c in enumerate(row)
+                ]
+            )
 
         # Player turn order as seat indices (skip eliminated).
         player_order_seats = [
-            match.player_to_seat[p.player_id]
-            for p in rules.player_order
-            if not p.is_eliminated
+            match.player_to_seat[p.player_id] for p in rules.player_order if not p.is_eliminated
         ]
 
         # Cumulative committed scores keyed by seat_index.
         committed_scores = {
-            match.player_to_seat[pid]: score
-            for pid, score in rules.committed_scores.items()
+            match.player_to_seat[pid]: score for pid, score in rules.committed_scores.items()
         }
 
         # Seat identity list for all four seats.
@@ -410,9 +415,7 @@ class MatchService:
             seats=seat_identities,
         )
 
-    def build_private_state(
-        self, match: ActiveMatch, seat_index: int
-    ) -> PrivatePlayerState:
+    def build_private_state(self, match: ActiveMatch, seat_index: int) -> PrivatePlayerState:
         """
         Produce a PrivatePlayerState for unicasting to the given seat only.
 
@@ -463,6 +466,7 @@ class MatchService:
         either restore it on reconnect or convert the seat to bot control.
         """
         import time
+
         seat = match.seats.get(seat_index)
         if seat is None:
             return
@@ -470,9 +474,7 @@ class MatchService:
         seat.disconnected_at = time.time()
         seat.connection_id = None
 
-    def reconnect_seat(
-        self, match: ActiveMatch, seat_index: int, new_connection_id: str
-    ) -> None:
+    def reconnect_seat(self, match: ActiveMatch, seat_index: int, new_connection_id: str) -> None:
         """
         Restore a human seat after a successful reconnect.
 
