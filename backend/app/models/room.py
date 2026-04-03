@@ -63,7 +63,13 @@ class Room:
         )
 
     def to_dict(self) -> dict:
-        """Return a JSON-serialisable representation for ROOM_STATE messages."""
+        """
+        Return a JSON-serialisable representation for ROOM_STATE messages.
+
+        user_id is deliberately excluded — it is a stable account identifier
+        that other clients have no need for.  display_name is sufficient for
+        the lobby UI.
+        """
         return {
             "room_code": self.room_code,
             "phase": self.phase,
@@ -74,7 +80,6 @@ class Room:
                     "display_name": p.display_name,
                     "controller_type": p.controller_type,
                     "is_ready": p.is_ready,
-                    "user_id": p.user_id,
                 }
                 for p in sorted(self.participants.values(), key=lambda x: x.seat_index)
             ],

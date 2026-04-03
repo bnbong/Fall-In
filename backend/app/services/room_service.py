@@ -91,25 +91,46 @@ class RoomService:
         """
         Remove the participant at seat_index.
 
-        Returns the updated Room, or None if the room was destroyed (last
-        participant left).  Host role is re-assigned to the lowest remaining
-        seat when the current host leaves.
+        Returns the updated Room, or None if the room was destroyed.
+
+        Destroy conditions:
+          - All participants are gone (WAITING phase normal case).
+          - No human (REMOTE) participants remain — bots-only state is
+            unrecoverable, so the room is cleaned up immediately.  This
+            prevents orphaned STARTING rooms after the last human leaves
+            or disconnects.
+
+        Host is re-assigned to the lowest-indexed remaining REMOTE seat.
         """
         room = self.repo.get(room_code)
         if room is None:
             return None
+
         room.participants.pop(seat_index, None)
-        if not room.participants:
+
+        remaining_humans = [
+            p for p in room.participants.values()
+            if p.controller_type == SeatControllerType.REMOTE
+        ]
+        if not remaining_humans:
             self.repo.delete(room_code)
             return None
+
         if room.host_seat_index == seat_index:
-            room.host_seat_index = min(room.participants.keys())
+            room.host_seat_index = min(p.seat_index for p in remaining_humans)
+
         self.repo.update(room)
         return room
 
     # ------------------------------------------------------------------
     # Ready toggle
     # ------------------------------------------------------------------
+    #
+    # READY_SET is cosmetic / informational only.
+    # The host can call start_room() regardless of whether other players
+    # have toggled ready.  This is an intentional design decision:
+    # the host controls pacing; ready flags are a social signal, not a gate.
+    # This rule is fixed here before PR-04 match handoff is built.
 
     def set_ready(self, room_code: str, seat_index: int, is_ready: bool) -> Room:
         room = self.repo.get(room_code)

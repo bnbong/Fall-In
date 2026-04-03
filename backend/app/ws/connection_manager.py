@@ -40,7 +40,10 @@ class ConnectionManager:
     async def send_to(self, conn_id: str, message: dict) -> None:
         ws = self._connections.get(conn_id)
         if ws:
-            await ws.send_json(message)
+            try:
+                await ws.send_json(message)
+            except Exception:
+                pass
 
     async def broadcast_to_room(self, room_code: str, message: dict) -> None:
         for conn_id in list(self._room_members.get(room_code, set())):

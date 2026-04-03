@@ -21,9 +21,11 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.main import app
 from app.models.room import RoomPhase, SeatControllerType
+from app.repositories.match_repo import InMemoryMatchRepo
 from app.repositories.room_repo import InMemoryRoomRepo
+from app.services.match_service import MatchService
 from app.services.room_service import RoomError, RoomService
-from app.ws.endpoint import get_room_service
+from app.ws.endpoint import get_match_service, get_room_service
 
 
 # ---------------------------------------------------------------------------
@@ -37,14 +39,21 @@ def room_service():
 
 
 @pytest.fixture()
-def client(db, room_service) -> TestClient:
-    """TestClient that overrides both get_db and get_room_service."""
+def match_service():
+    """Fresh match service for each test."""
+    return MatchService(InMemoryMatchRepo())
+
+
+@pytest.fixture()
+def client(db, room_service, match_service) -> TestClient:
+    """TestClient that overrides get_db, get_room_service, and get_match_service."""
 
     def override_get_db():
         yield db
 
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_room_service] = lambda: room_service
+    app.dependency_overrides[get_match_service] = lambda: match_service
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()
@@ -220,6 +229,45 @@ class TestRoomService:
         d = room.to_dict()
         for p in d["participants"]:
             assert "connection_id" not in p
+
+    def test_room_to_dict_excludes_user_id(self, room_service):
+        """user_id is a stable account identifier — must not appear in broadcast."""
+        room = room_service.create_room("Alice", "conn-1", user_id="secret-uuid")
+        d = room.to_dict()
+        for p in d["participants"]:
+            assert "user_id" not in p
+
+    def test_leave_room_last_human_in_starting_room_destroys_room(self, room_service):
+        """
+        After ROOM_START bots fill all empty seats.  When the only human leaves,
+        the room must be destroyed (bots-only state is unrecoverable).
+        """
+        room = room_service.create_room("Solo", "conn-solo")
+        started = room_service.start_room(room.room_code, 0)
+        assert started.phase == RoomPhase.STARTING
+        assert len(started.participants) == 4
+        # Human (seat 0) leaves
+        result = room_service.leave_room(room.room_code, 0)
+        assert result is None
+        assert room_service.repo.get(room.room_code) is None
+
+    def test_leave_room_host_reassigns_only_among_humans(self, room_service):
+        """Host re-assignment must skip bot seats."""
+        room = room_service.create_room("HostA", "conn-a")    # seat 0 = host
+        room_service.join_room(room.room_code, "PlayerB", "conn-b")  # seat 1
+        # Manually add a bot at seat 2 (simulating a partial-fill scenario)
+        from app.models.room import RoomParticipant, SeatControllerType
+        room.participants[2] = RoomParticipant(
+            seat_index=2,
+            display_name="Bot3",
+            controller_type=SeatControllerType.BOT,
+            is_ready=True,
+        )
+        room_service.repo.update(room)
+        # Host (seat 0) leaves; new host should be seat 1 (human), not seat 2 (bot)
+        updated = room_service.leave_room(room.room_code, 0)
+        assert updated is not None
+        assert updated.host_seat_index == 1
 
 
 # ===========================================================================
@@ -402,7 +450,8 @@ class TestRoomWebSocket:
         for p in msg["data"]["participants"]:
             if p["controller_type"] == SeatControllerType.BOT:
                 assert p["is_ready"] is True
-                assert p["user_id"] is None
+                # user_id is never sent over the wire (privacy fix)
+                assert "user_id" not in p
 
     def test_ws_room_start_without_room_returns_error(self, client):
         token = _guest(client, "StartNoRoom")
@@ -476,3 +525,203 @@ class TestRoomWebSocket:
             msg = ws.receive_json()
         assert msg["type"] == "ERROR"
         assert msg["data"]["code"] == "ALREADY_IN_ROOM"
+
+    def test_ws_disconnect_cleans_up_room(self, client, room_service):
+        """Disconnecting the last human destroys the room via the endpoint finally block."""
+        token = _guest(client, "Disconnecter")
+        room_code = None
+        with client.websocket_connect("/ws") as ws:
+            _ws_auth(ws, token)
+            ws.send_json({"type": "ROOM_CREATE"})
+            msg = ws.receive_json()
+            room_code = msg["data"]["room_code"]
+        # Context exit closes WS; endpoint finally block calls leave_room()
+        assert room_service.repo.get(room_code) is None
+
+    def test_ws_room_participant_has_no_user_id_on_wire(self, client):
+        """user_id must not appear in any ROOM_STATE participant entry."""
+        token = _guest(client, "PrivacyCheck")
+        with client.websocket_connect("/ws") as ws:
+            _ws_auth(ws, token)
+            ws.send_json({"type": "ROOM_CREATE"})
+            msg = ws.receive_json()
+        for p in msg["data"]["participants"]:
+            assert "user_id" not in p
+
+    def test_ws_auth_suspended_account_rejected(self, client, db):
+        """A suspended account's access token must be rejected in WS auth."""
+        token = _register(client, "wssuspended@example.com", nickname="WsSuspended")
+        from app.models.db import User, UserStatus
+        user = db.query(User).filter(User.email == "wssuspended@example.com").first()
+        user.status = UserStatus.SUSPENDED
+        db.commit()
+        with client.websocket_connect("/ws") as ws:
+            ws.send_json({"type": "WS_HELLO"})
+            ws.receive_json()
+            ws.send_json({"type": "AUTH_LOGIN", "data": {"token": token}})
+            msg = ws.receive_json()
+        assert msg["type"] == "ERROR"
+        assert msg["data"]["code"] == "ACCOUNT_NOT_ACTIVE"
+
+
+# ===========================================================================
+# Multi-client WebSocket tests — broadcast, disconnect cleanup, host transfer
+# ===========================================================================
+
+class TestMultiClientWebSocket:
+    """
+    Tests that require two concurrent WebSocket connections.
+    Threading is used to hold both connections open simultaneously.
+    Errors from child threads are re-raised in the main thread.
+    """
+
+    def test_join_broadcasts_to_existing_member(self, client):
+        """When B joins, A receives a ROOM_STATE broadcast with 2 participants."""
+        import threading
+
+        token_a = _guest(client, "BroadcastA")
+        token_b = _guest(client, "BroadcastB")
+        shared: dict = {"room_code": None, "a_msgs": [], "error": None}
+        a_ready = threading.Event()
+
+        def run_a():
+            try:
+                with client.websocket_connect("/ws") as ws:
+                    _ws_auth(ws, token_a)
+                    ws.send_json({"type": "ROOM_CREATE"})
+                    msg = ws.receive_json()                  # ROOM_STATE (1 member)
+                    shared["room_code"] = msg["data"]["room_code"]
+                    shared["a_msgs"].append(msg)
+                    a_ready.set()
+                    msg2 = ws.receive_json()                 # broadcast when B joins
+                    shared["a_msgs"].append(msg2)
+            except Exception as exc:
+                shared["error"] = exc
+                a_ready.set()
+
+        def run_b():
+            a_ready.wait(timeout=5)
+            try:
+                with client.websocket_connect("/ws") as ws:
+                    _ws_auth(ws, token_b)
+                    ws.send_json({"type": "ROOM_JOIN", "data": {"room_code": shared["room_code"]}})
+                    ws.receive_json()                        # ROOM_STATE (2 members)
+            except Exception as exc:
+                shared["error"] = exc
+
+        t_a = threading.Thread(target=run_a)
+        t_b = threading.Thread(target=run_b)
+        t_a.start()
+        t_b.start()
+        t_b.join(timeout=5)
+        t_a.join(timeout=5)
+
+        assert shared["error"] is None, f"Thread error: {shared['error']}"
+        assert len(shared["a_msgs"]) == 2
+        assert len(shared["a_msgs"][1]["data"]["participants"]) == 2
+
+    def test_room_start_broadcasts_to_all_members(self, client):
+        """When host starts, all connected members receive the ROOM_STATE broadcast."""
+        import threading
+
+        token_a = _guest(client, "StartHostX")
+        token_b = _guest(client, "StartMemberY")
+        shared: dict = {"room_code": None, "b_start": None, "error": None}
+        a_created = threading.Event()
+        b_joined = threading.Event()
+
+        def run_a():
+            try:
+                with client.websocket_connect("/ws") as ws:
+                    _ws_auth(ws, token_a)
+                    ws.send_json({"type": "ROOM_CREATE"})
+                    msg = ws.receive_json()
+                    shared["room_code"] = msg["data"]["room_code"]
+                    a_created.set()
+                    b_joined.wait(timeout=5)
+                    ws.receive_json()                        # B-join broadcast
+                    ws.send_json({"type": "ROOM_START"})
+                    ws.receive_json()                        # start broadcast to A
+            except Exception as exc:
+                shared["error"] = exc
+
+        def run_b():
+            a_created.wait(timeout=5)
+            try:
+                with client.websocket_connect("/ws") as ws:
+                    _ws_auth(ws, token_b)
+                    ws.send_json({"type": "ROOM_JOIN", "data": {"room_code": shared["room_code"]}})
+                    ws.receive_json()                        # ROOM_STATE after join
+                    b_joined.set()
+                    msg = ws.receive_json()                  # start broadcast to B
+                    shared["b_start"] = msg
+            except Exception as exc:
+                shared["error"] = exc
+                b_joined.set()
+
+        t_a = threading.Thread(target=run_a)
+        t_b = threading.Thread(target=run_b)
+        t_a.start()
+        t_b.start()
+        t_a.join(timeout=10)
+        t_b.join(timeout=10)
+
+        assert shared["error"] is None, f"Thread error: {shared['error']}"
+        assert shared["b_start"] is not None
+        assert shared["b_start"]["type"] == "ROOM_STATE"
+        assert shared["b_start"]["data"]["phase"] == RoomPhase.STARTING
+
+    def test_host_disconnect_transfers_host_to_remaining_member(self, client):
+        """When the host disconnects, the remaining human receives ROOM_STATE with updated host."""
+        import threading
+
+        token_a = _guest(client, "DiscoHost")
+        token_b = _guest(client, "DiscoMember")
+        shared: dict = {"room_code": None, "b_msgs": [], "error": None}
+        a_created = threading.Event()
+        b_joined = threading.Event()
+        a_should_leave = threading.Event()
+
+        def run_a():
+            try:
+                with client.websocket_connect("/ws") as ws:
+                    _ws_auth(ws, token_a)
+                    ws.send_json({"type": "ROOM_CREATE"})
+                    msg = ws.receive_json()
+                    shared["room_code"] = msg["data"]["room_code"]
+                    a_created.set()
+                    b_joined.wait(timeout=5)
+                    ws.receive_json()                        # B-join broadcast
+                    a_should_leave.wait(timeout=5)
+                # A's context exits here — endpoint finally block fires
+            except Exception as exc:
+                shared["error"] = exc
+
+        def run_b():
+            a_created.wait(timeout=5)
+            try:
+                with client.websocket_connect("/ws") as ws:
+                    _ws_auth(ws, token_b)
+                    ws.send_json({"type": "ROOM_JOIN", "data": {"room_code": shared["room_code"]}})
+                    msg = ws.receive_json()                  # ROOM_STATE (2 members)
+                    shared["b_msgs"].append(msg)
+                    b_joined.set()
+                    a_should_leave.set()
+                    msg2 = ws.receive_json()                 # ROOM_STATE after A disconnects
+                    shared["b_msgs"].append(msg2)
+            except Exception as exc:
+                shared["error"] = exc
+
+        t_a = threading.Thread(target=run_a)
+        t_b = threading.Thread(target=run_b)
+        t_b.start()
+        t_a.start()
+        t_a.join(timeout=10)
+        t_b.join(timeout=10)
+
+        assert shared["error"] is None, f"Thread error: {shared['error']}"
+        assert len(shared["b_msgs"]) == 2
+        final = shared["b_msgs"][1]["data"]
+        # B was at seat 1; after A (seat 0) leaves, B becomes host
+        assert final["host_seat_index"] == 1
+        assert len(final["participants"]) == 1

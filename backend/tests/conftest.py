@@ -35,6 +35,15 @@ def reset_ws_manager():
     manager.reset()
 
 
+@pytest.fixture(autouse=True)
+def reset_match_service():
+    """Reset the module-level MatchService singleton between tests."""
+    from app.ws.endpoint import _match_service
+    _match_service.reset()
+    yield
+    _match_service.reset()
+
+
 @pytest.fixture()
 def db_engine():
     """Fresh in-memory SQLite engine for one test."""

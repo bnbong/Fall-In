@@ -1,0 +1,81 @@
+"""
+Server-side match state models.
+
+ActiveMatch owns the authoritative GameRules instance for a running match.
+All state mutations go through MatchService.
+
+Design rules (from multiplayer plan):
+  - player_id == seat_index for all seats.
+  - board_row_owners tracks per-card seat ownership for PublicMatchState serialisation.
+  - Starter cards (dealt to rows at round start) have owner_seat = -1.
+  - last_turn_steps holds the most recently resolved turn's placements;
+    it is cleared at the start of each new round.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from fall_in.core.rules import GameRules
+    from fall_in.core.board import PlacementResult
+    from fall_in.ai.ai_player import AIPlayer
+
+from app.models.room import SeatControllerType
+
+
+@dataclass
+class MatchSeat:
+    """Per-seat match identity: maps a room participant to a GameRules Player."""
+
+    seat_index: int
+    player: object              # fall_in.core.player.Player (typed as object to avoid circular import at module load)
+    connection_id: Optional[str]  # None for bots
+    user_id: Optional[str]        # None for guests and bots
+    display_name: str
+    controller_type: SeatControllerType
+    ai_controller: Optional[object] = None  # fall_in.ai.ai_player.AIPlayer; None for human seats
+
+
+@dataclass
+class TurnStep:
+    """Result of a single card placement during turn resolution."""
+
+    seat_index: int
+    card_number: int
+    card_danger: int
+    row_index: int
+    penalty_score: int
+    had_to_take_row: bool
+    order: int          # 1-based placement order
+
+
+@dataclass
+class RoundSummary:
+    """Scores and elimination info produced by MatchService.finalize_round()."""
+
+    round_number: int
+    round_danger: dict[int, int]   # seat_index -> danger this round
+    total_scores: dict[int, int]   # seat_index -> cumulative danger
+    eliminated_seats: list[int]
+    game_over: bool
+    winner_seat: Optional[int]
+
+
+@dataclass
+class ActiveMatch:
+    """Live match owned by MatchService."""
+
+    match_id: str
+    room_code: str
+    rules: object                           # fall_in.core.rules.GameRules
+    seats: dict[int, MatchSeat]             # seat_index -> MatchSeat
+    player_to_seat: dict[int, int]          # player_id -> seat_index
+
+    # Parallel ownership tracking for board rows.
+    # board_row_owners[row_idx][pos] = seat_index (-1 for starter cards).
+    board_row_owners: list[list[int]] = field(default_factory=lambda: [[], [], [], []])
+
+    # Most recently resolved turn's TurnStep list (cleared at round start).
+    last_turn_steps: list[TurnStep] = field(default_factory=list)

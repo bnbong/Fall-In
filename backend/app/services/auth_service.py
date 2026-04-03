@@ -7,7 +7,7 @@ Keeps route handlers thin by centralising credential validation here.
 from sqlalchemy.orm import Session
 
 from app.auth.password import verify_password
-from app.models.db import AccountType, User
+from app.models.db import AccountType, User, UserStatus
 from app.repositories import user_repo
 
 
@@ -21,7 +21,7 @@ def authenticate(db: Session, email: str, password: str) -> User:
     Validate email + password and return the matching User.
 
     Raises AuthenticationError on any failure (user not found,
-    wrong password, or account is a guest — no password set).
+    wrong password, account is a guest, or account is not ACTIVE).
     Using the same exception type for all cases avoids leaking
     which part of the check failed (timing-safe).
     """
@@ -34,6 +34,9 @@ def authenticate(db: Session, email: str, password: str) -> User:
         raise AuthenticationError("Invalid credentials")
 
     if not verify_password(password, user.password_hash):
+        raise AuthenticationError("Invalid credentials")
+
+    if user.status != UserStatus.ACTIVE:
         raise AuthenticationError("Invalid credentials")
 
     return user

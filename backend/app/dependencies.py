@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.jwt import decode_token
 from app.database import get_db
-from app.models.db import AccountType, User
+from app.models.db import AccountType, User, UserStatus
 from app.repositories import user_repo
 
 _bearer = HTTPBearer()
@@ -55,6 +55,12 @@ def get_current_user(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found",
+        )
+
+    if user.status != UserStatus.ACTIVE:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Account is not active",
         )
 
     return user

@@ -33,7 +33,8 @@ packages = ["app"]
 
 [tool.pytest.ini_options]
 # Run from backend/ directory: uv run pytest tests/
-pythonpath = ["."]
+# ../src makes fall_in.core (GameRules etc.) importable for MatchService tests.
+pythonpath = [".", "../src"]
 testpaths = ["tests"]
 
 [tool.ruff]

@@ -181,3 +181,88 @@ class TestLogout:
     def test_logout_response_has_detail(self, client):
         resp = client.post("/auth/logout")
         assert "detail" in resp.json()
+
+
+# ---------------------------------------------------------------------------
+# Account status enforcement
+# ---------------------------------------------------------------------------
+
+class TestAccountStatus:
+    """
+    Suspended and deleted accounts must be blocked at every auth boundary:
+    login, token-bearing HTTP requests, and WS auth.
+    """
+
+    def _suspend(self, db, email: str) -> None:
+        from app.models.db import User, UserStatus
+        user = db.query(User).filter(User.email == email).first()
+        user.status = UserStatus.SUSPENDED
+        db.commit()
+
+    def _delete(self, db, email: str) -> None:
+        from app.models.db import User, UserStatus
+        user = db.query(User).filter(User.email == email).first()
+        user.status = UserStatus.DELETED
+        db.commit()
+
+    def test_suspended_user_cannot_login(self, client, db):
+        _register(client, "suspended@example.com", nickname="Suspended")
+        self._suspend(db, "suspended@example.com")
+        resp = client.post("/auth/login", json={
+            "email": "suspended@example.com",
+            "password": "password123",
+        })
+        assert resp.status_code == 401
+
+    def test_deleted_user_cannot_login(self, client, db):
+        _register(client, "deleted@example.com", nickname="Deleted")
+        self._delete(db, "deleted@example.com")
+        resp = client.post("/auth/login", json={
+            "email": "deleted@example.com",
+            "password": "password123",
+        })
+        assert resp.status_code == 401
+
+    def test_suspended_user_same_error_message_as_wrong_password(self, client, db):
+        """Status check must not leak more info than a wrong-password failure."""
+        _register(client, "suscheck@example.com", nickname="SusCheck")
+        self._suspend(db, "suscheck@example.com")
+        resp_suspended = client.post("/auth/login", json={
+            "email": "suscheck@example.com", "password": "password123",
+        })
+        resp_wrong_pw = client.post("/auth/login", json={
+            "email": "suscheck@example.com", "password": "wrongpassword",
+        })
+        assert resp_suspended.status_code == 401
+        assert resp_wrong_pw.status_code == 401
+        assert resp_suspended.json()["detail"] == resp_wrong_pw.json()["detail"]
+
+    def test_suspended_user_existing_token_rejected_on_profile(self, client, db):
+        """A token issued before suspension must be rejected on subsequent requests."""
+        resp = _register(client, "willsuspend@example.com", nickname="WillSuspend")
+        token = resp.json()["access_token"]
+        # Works before suspension
+        assert client.get(
+            "/me/profile", headers={"Authorization": f"Bearer {token}"}
+        ).status_code == 200
+        # Suspend and retry
+        self._suspend(db, "willsuspend@example.com")
+        assert client.get(
+            "/me/profile", headers={"Authorization": f"Bearer {token}"}
+        ).status_code == 401
+
+    def test_deleted_user_existing_token_rejected_on_profile(self, client, db):
+        resp = _register(client, "willdelete@example.com", nickname="WillDelete")
+        token = resp.json()["access_token"]
+        self._delete(db, "willdelete@example.com")
+        assert client.get(
+            "/me/profile", headers={"Authorization": f"Bearer {token}"}
+        ).status_code == 401
+
+    def test_suspended_user_cannot_access_collection(self, client, db):
+        resp = _register(client, "sus_col@example.com", nickname="SusCol")
+        token = resp.json()["access_token"]
+        self._suspend(db, "sus_col@example.com")
+        assert client.get(
+            "/me/collection", headers={"Authorization": f"Bearer {token}"}
+        ).status_code == 401

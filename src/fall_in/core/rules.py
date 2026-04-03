@@ -77,11 +77,14 @@ class GameRules:
     5. On ResultScene: calculate penalties, check for 66+ points (elimination).
     """
 
-    def __init__(self, players: list[Player]):
+    def __init__(self, players: list[Player], human_seat: Optional[int] = 0):
         if len(players) != NUM_PLAYERS:
             raise ValueError(f"Need exactly {NUM_PLAYERS} players")
 
         self.players = players
+        # Index of the "human" player for single-player game-over detection.
+        # Pass None to disable the single-player shortcut (multiplayer mode).
+        self._human_seat = human_seat
         self.board = Board()
         self.deck: list[Card] = []
 
@@ -300,16 +303,27 @@ class GameRules:
         return results
 
     def _check_game_end(self) -> None:
-        """Check if game should end (human eliminated or only 1 player left)."""
+        """Check if game should end (human eliminated or only 1 player left).
+
+        When human_seat is None (multiplayer mode), only ends when <=1 active
+        player remains — no single-seat special-case.
+        """
         active_players = [p for p in self.players if not p.is_eliminated]
-        human_eliminated = self.players[0].is_eliminated  # Player 0 is always human
+        human_eliminated = (
+            self._human_seat is not None
+            and self.players[self._human_seat].is_eliminated
+        )
 
         if len(active_players) <= 1 or human_eliminated:
             self.game_over = True
             self.round_state.phase = RoundPhase.GAME_END
 
             if human_eliminated:
-                ai_players = [p for p in self.players[1:] if not p.is_eliminated]
+                # Single-player: human lost — lowest-score AI wins.
+                ai_players = [
+                    p for p in self.players
+                    if p is not self.players[self._human_seat] and not p.is_eliminated  # type: ignore[index]
+                ]
                 if ai_players:
                     self.winner = min(ai_players, key=lambda p: p.penalty_score)
                 else:

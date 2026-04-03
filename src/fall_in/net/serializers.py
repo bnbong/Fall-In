@@ -61,15 +61,18 @@ def _assert_no_private_fields(d: dict[str, Any], context: str = "") -> None:
 
 
 def seat_identity_to_dict(seat: SeatIdentity) -> dict[str, Any]:
-    """Serialise a SeatIdentity for broadcast (user_id omitted if None)."""
-    d: dict[str, Any] = {
+    """
+    Serialise a SeatIdentity for broadcast.
+
+    user_id is always omitted — it is a stable account identifier that
+    other clients have no need for.  display_name is the only identity
+    signal in public match state.
+    """
+    return {
         "seat_index": seat.seat_index,
         "controller_type": seat.controller_type.value,
         "display_name": seat.display_name,
     }
-    if seat.user_id is not None:
-        d["user_id"] = seat.user_id
-    return d
 
 
 # ---------------------------------------------------------------------------

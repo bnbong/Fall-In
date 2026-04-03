@@ -17,6 +17,12 @@ class WsSession:
     def is_authenticated(self) -> bool:
         return self.display_name is not None
 
+    match_id: Optional[str] = None
+
     @property
     def in_room(self) -> bool:
         return self.room_code is not None
+
+    @property
+    def in_match(self) -> bool:
+        return self.match_id is not None
