@@ -44,6 +44,21 @@ def reset_match_service():
     _match_service.reset()
 
 
+@pytest.fixture(autouse=True)
+def reset_presence_manager():
+    """
+    Cancel all pending asyncio tasks and clear token state between tests.
+
+    Calls PresenceManager.reset() which cancels grace-period and selection-
+    timeout tasks AND clears the underlying reconnect token repo, so that
+    tokens issued in one test are never visible in the next.
+    """
+    from app.ws.presence import presence_manager
+    presence_manager.reset()
+    yield
+    presence_manager.reset()
+
+
 @pytest.fixture()
 def db_engine():
     """Fresh in-memory SQLite engine for one test."""

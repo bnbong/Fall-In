@@ -450,6 +450,108 @@ class MatchService:
     def delete_match(self, match_id: str) -> None:
         self.repo.delete(match_id)
 
+    # ------------------------------------------------------------------
+    # Presence / reconnect helpers (PR-05)
+    # ------------------------------------------------------------------
+
+    def mark_seat_disconnected(self, match: ActiveMatch, seat_index: int) -> None:
+        """
+        Record that a human seat has lost its WebSocket connection.
+
+        Sets is_disconnected = True and captures disconnected_at timestamp.
+        The connection_id is cleared; the PresenceManager's grace timer will
+        either restore it on reconnect or convert the seat to bot control.
+        """
+        import time
+        seat = match.seats.get(seat_index)
+        if seat is None:
+            return
+        seat.is_disconnected = True
+        seat.disconnected_at = time.time()
+        seat.connection_id = None
+
+    def reconnect_seat(
+        self, match: ActiveMatch, seat_index: int, new_connection_id: str
+    ) -> None:
+        """
+        Restore a human seat after a successful reconnect.
+
+        Updates connection_id and clears the disconnected flags.
+        """
+        seat = match.seats.get(seat_index)
+        if seat is None:
+            raise MatchError(f"Seat {seat_index} not found in match {match.match_id}")
+        seat.connection_id = new_connection_id
+        seat.is_disconnected = False
+        seat.disconnected_at = None
+
+    def takeover_seat(self, match: ActiveMatch, seat_index: int) -> None:
+        """
+        Permanently convert a disconnected REMOTE seat to BOT control.
+
+        Installs an AIPlayer, marks took_over_by_bot = True, and immediately
+        auto-selects a card if the match is in SELECTING phase.  Once this is
+        called the seat can never be reclaimed by a reconnecting human.
+        """
+        seat = match.seats.get(seat_index)
+        if seat is None:
+            raise MatchError(f"Seat {seat_index} not found in match {match.match_id}")
+
+        seat.controller_type = SeatControllerType.BOT
+        seat.took_over_by_bot = True
+        seat.is_disconnected = False  # fully converted — no longer "disconnected"
+        seat.connection_id = None
+
+        if seat.ai_controller is None:
+            # AIPlayer requires player_type == AI; upgrade before constructing.
+            seat.player.player_type = PlayerType.AI  # type: ignore[union-attr]
+            seat.ai_controller = AIPlayer(seat.player)  # type: ignore[arg-type]
+
+        rules: GameRules = match.rules  # type: ignore[assignment]
+        if (
+            rules.round_state.phase == RoundPhase.SELECTING
+            and not seat.player.is_eliminated  # type: ignore[union-attr]
+            and seat.player.selected_card is None  # type: ignore[union-attr]
+        ):
+            seat.ai_controller.select_card(rules.board)  # type: ignore[union-attr]
+
+    def auto_select_timed_out(self, match: ActiveMatch) -> list[int]:
+        """
+        Auto-select cards for any non-eliminated REMOTE seats that have not
+        yet selected during the current SELECTING phase.
+
+        Uses temporary AIPlayer instances so the seat remains REMOTE (the
+        player is still considered human — they just timed out this turn).
+        Returns the list of seat indices that were auto-selected.
+        """
+        rules: GameRules = match.rules  # type: ignore[assignment]
+        if rules.round_state.phase != RoundPhase.SELECTING:
+            return []
+
+        timed_out: list[int] = []
+        for seat in match.seats.values():
+            if (
+                seat.controller_type == SeatControllerType.REMOTE
+                and not seat.player.is_eliminated  # type: ignore[union-attr]
+                and seat.player.selected_card is None  # type: ignore[union-attr]
+            ):
+                # Temporarily mark player as AI so AIPlayer can be constructed.
+                # The seat remains REMOTE — the player is still human, just
+                # auto-selected for this turn because they timed out.
+                original_type = seat.player.player_type  # type: ignore[union-attr]
+                seat.player.player_type = PlayerType.AI  # type: ignore[union-attr]
+                try:
+                    ai = (
+                        seat.ai_controller
+                        if seat.ai_controller is not None
+                        else AIPlayer(seat.player)  # type: ignore[arg-type]
+                    )
+                    ai.select_card(rules.board)
+                finally:
+                    seat.player.player_type = original_type  # type: ignore[union-attr]
+                timed_out.append(seat.seat_index)
+        return timed_out
+
     def reset(self) -> None:
         """Clear all active matches.  Called between tests."""
         self.repo.clear()

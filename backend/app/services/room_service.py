@@ -176,6 +176,60 @@ class RoomService:
         return room
 
     # ------------------------------------------------------------------
+    # Reconnect (PR-05)
+    # ------------------------------------------------------------------
+
+    def reconnect_participant(
+        self,
+        room_code: str,
+        seat_index: int,
+        new_connection_id: str,
+    ) -> Optional[Room]:
+        """
+        Update connection_id for a seat that has successfully reconnected.
+
+        Returns the updated Room, or None if the room no longer exists
+        (e.g. lobby was destroyed while the player was disconnected).
+        """
+        room = self.repo.get(room_code)
+        if room is None:
+            return None
+        participant = room.participants.get(seat_index)
+        if participant is None:
+            return None
+        participant.connection_id = new_connection_id
+        self.repo.update(room)
+        return room
+
+    # ------------------------------------------------------------------
+    # Bot takeover sync (PR-05)
+    # ------------------------------------------------------------------
+
+    def mark_participant_bot_takeover(
+        self,
+        room_code: str,
+        seat_index: int,
+    ) -> None:
+        """
+        Sync the room participant record after a match-level bot takeover.
+
+        After MatchService.takeover_seat() permanently converts a seat to BOT
+        control, the corresponding RoomParticipant must also be updated so that
+        leave_room()'s human-count check stays accurate.  Without this, the
+        stale REMOTE entry would make the room appear to have surviving humans
+        even after the last player disconnects and is taken over by a bot.
+        """
+        room = self.repo.get(room_code)
+        if room is None:
+            return
+        participant = room.participants.get(seat_index)
+        if participant is None:
+            return
+        participant.controller_type = SeatControllerType.BOT
+        participant.connection_id = None
+        self.repo.update(room)
+
+    # ------------------------------------------------------------------
     # Lookup
     # ------------------------------------------------------------------
 

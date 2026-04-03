@@ -24,6 +24,13 @@ dev = [
     "ruff>=0.14.14",
 ]
 
+# Production extras: install with `uv pip install -e ".[prod]"`
+# The remote server already has Redis; set REDIS_URL in .env to activate
+# the Redis-backed reconnect token store with automatic TTL expiry.
+prod = [
+    "redis[hiredis]>=5.0.0",
+]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

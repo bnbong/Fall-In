@@ -12,12 +12,21 @@ class WsSession:
     account_type: Optional[str] = None   # "registered" | "guest"
     room_code: Optional[str] = None
     seat_index: Optional[int] = None
+    match_id: Optional[str] = None
+
+    # Heartbeat state (PR-05).
+    # Set True when the server sends a PING; cleared when the client PONGs.
+    # If still True when the next PING is due, the connection is considered dead.
+    awaiting_pong: bool = False
+
+    # Reconnect token issued at match start for this session's seat (PR-05).
+    # Stored so the endpoint can look it up without querying the repo on
+    # normal (non-reconnect) disconnects.
+    reconnect_token: Optional[str] = None
 
     @property
     def is_authenticated(self) -> bool:
         return self.display_name is not None
-
-    match_id: Optional[str] = None
 
     @property
     def in_room(self) -> bool:

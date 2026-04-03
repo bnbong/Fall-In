@@ -31,11 +31,20 @@ class MatchSeat:
 
     seat_index: int
     player: object              # fall_in.core.player.Player (typed as object to avoid circular import at module load)
-    connection_id: Optional[str]  # None for bots
+    connection_id: Optional[str]  # None for bots; cleared on disconnect
     user_id: Optional[str]        # None for guests and bots
     display_name: str
     controller_type: SeatControllerType
     ai_controller: Optional[object] = None  # fall_in.ai.ai_player.AIPlayer; None for human seats
+
+    # Presence / reconnect state (PR-05).
+    # is_disconnected: True between WebSocketDisconnect and successful reconnect.
+    # disconnected_at: time.time() value recorded when is_disconnected becomes True.
+    # took_over_by_bot: True once the grace period has expired and the seat has
+    #   been permanently converted to bot control.  Cannot be reversed.
+    is_disconnected: bool = False
+    disconnected_at: Optional[float] = None
+    took_over_by_bot: bool = False
 
 
 @dataclass
@@ -79,3 +88,7 @@ class ActiveMatch:
 
     # Most recently resolved turn's TurnStep list (cleared at round start).
     last_turn_steps: list[TurnStep] = field(default_factory=list)
+
+    # Timestamp (time.time()) set when the SELECTING phase begins.
+    # Used by the card-selection timeout task to know when the timer started.
+    selection_started_at: Optional[float] = None
