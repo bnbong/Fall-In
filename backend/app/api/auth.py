@@ -22,6 +22,7 @@ from app.auth.jwt import (
 )
 from app.auth.password import hash_password
 from app.database import get_db
+from app.models.db import UserStatus
 from app.repositories import user_repo
 from app.schemas.auth import (
     AuthResponse,
@@ -137,6 +138,12 @@ def refresh(req: RefreshRequest, db: Session = Depends(get_db)) -> TokenResponse
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found",
+        )
+
+    if user.status != UserStatus.ACTIVE:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Account is not active",
         )
 
     return TokenResponse(

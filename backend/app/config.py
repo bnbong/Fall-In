@@ -68,6 +68,14 @@ class Settings(BaseSettings):
     EMOTE_BURST_WINDOW_SECONDS: int = 10
     EMOTE_SAME_REPEAT_CAP: int = 2
 
+    # Beta ops (PR-08).
+    # LOG_LEVEL: root log level — INFO for beta, DEBUG for local stepping.
+    # ADMIN_TOKEN: static bearer token that gates /admin/* endpoints.
+    #   Leave empty to disable admin endpoints (safe default for local dev).
+    #   Set to a strong random string before beta deployment.
+    LOG_LEVEL: str = "INFO"
+    ADMIN_TOKEN: str = ""
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

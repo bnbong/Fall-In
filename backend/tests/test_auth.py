@@ -197,6 +197,35 @@ class TestRefresh:
         profile = client.get("/me/profile", headers={"Authorization": f"Bearer {new_token}"})
         assert profile.status_code == 200
 
+    def test_refresh_blocked_after_suspension(self, client, db):
+        """Suspended account must not receive a new access token via refresh."""
+        from app.models.db import User, UserStatus
+
+        reg = _register(client, "suspend_refresh@example.com", nickname="SuspRefresh")
+        refresh_token = reg.json()["refresh_token"]
+
+        # Suspend the account
+        user = db.query(User).filter(User.email == "suspend_refresh@example.com").first()
+        user.status = UserStatus.SUSPENDED
+        db.commit()
+
+        resp = client.post("/auth/refresh", json={"refresh_token": refresh_token})
+        assert resp.status_code == 401
+
+    def test_refresh_blocked_after_deletion(self, client, db):
+        """Deleted account must not receive a new access token via refresh."""
+        from app.models.db import User, UserStatus
+
+        reg = _register(client, "delete_refresh@example.com", nickname="DelRefresh")
+        refresh_token = reg.json()["refresh_token"]
+
+        user = db.query(User).filter(User.email == "delete_refresh@example.com").first()
+        user.status = UserStatus.DELETED
+        db.commit()
+
+        resp = client.post("/auth/refresh", json={"refresh_token": refresh_token})
+        assert resp.status_code == 401
+
 
 # ---------------------------------------------------------------------------
 # Logout

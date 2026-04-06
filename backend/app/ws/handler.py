@@ -27,9 +27,13 @@ PR-06 additions
 * _execute_turn triggers MMR persistence for eligible ranked matches.
 """
 
+import logging
+
 from fall_in.net.serializers import private_state_to_dict, public_state_to_dict
 from fastapi import WebSocket
 from jose import JWTError
+
+logger = logging.getLogger("fall_in.ws.handler")
 
 from app.auth.jwt import decode_token
 from app.config import settings
@@ -101,7 +105,11 @@ async def handle_message(
         # Client responding to a server-initiated PING; clear the awaiting flag.
         session.awaiting_pong = False
     else:
-        await _error(ws, "UNKNOWN_MESSAGE", f"Unknown message type: {msg_type!r}")
+        logger.warning(
+            "ws_unknown_message",
+            extra={"conn_id": session.connection_id, "msg_type": msg_type},
+        )
+        await _error(ws, "UNKNOWN_MESSAGE", f"Unknown message type: {msg_type!r}", session=session)
 
 
 # ---------------------------------------------------------------------------
@@ -109,7 +117,30 @@ async def handle_message(
 # ---------------------------------------------------------------------------
 
 
-async def _error(ws: WebSocket, code: str, message: str) -> None:
+async def _error(
+    ws: WebSocket,
+    code: str,
+    message: str,
+    *,
+    session: WsSession | None = None,
+    level: str = "warning",
+) -> None:
+    """
+    Send an ERROR frame to the client and emit a structured log entry.
+
+    ``level`` controls the log severity: "warning" for expected client errors
+    (bad input, wrong state), "error" for unexpected server-side failures.
+    """
+    log_fn = logger.error if level == "error" else logger.warning
+    log_fn(
+        "ws_error",
+        extra={
+            "code": code,
+            "detail": message,
+            "conn_id": session.connection_id if session else None,
+            "user_id": session.user_id if session else None,
+        },
+    )
     await ws.send_json({"type": "ERROR", "data": {"code": code, "message": message}})
 
 
@@ -196,36 +227,45 @@ async def _hello(ws: WebSocket, session: WsSession) -> None:
 async def _auth(ws: WebSocket, session: WsSession, data: dict, db) -> None:
     token = data.get("token")
     if not token:
-        await _error(ws, "MISSING_TOKEN", "token is required")
+        await _error(ws, "MISSING_TOKEN", "token is required", session=session)
         return
 
     try:
         payload = decode_token(token)
     except JWTError:
-        await _error(ws, "INVALID_TOKEN", "Invalid or expired token")
+        await _error(ws, "INVALID_TOKEN", "Invalid or expired token", session=session)
         return
 
     if payload.get("type") != "access":
-        await _error(ws, "INVALID_TOKEN", "Must use an access token")
+        await _error(ws, "INVALID_TOKEN", "Must use an access token", session=session)
         return
 
     user_id = payload.get("sub")
     if not user_id:
-        await _error(ws, "INVALID_TOKEN", "Token has no subject")
+        await _error(ws, "INVALID_TOKEN", "Token has no subject", session=session)
         return
 
     user = user_repo.get_by_id(db, user_id)
     if user is None:
-        await _error(ws, "USER_NOT_FOUND", "User not found")
+        await _error(ws, "USER_NOT_FOUND", "User not found", session=session)
         return
 
     if user.status != UserStatus.ACTIVE:
-        await _error(ws, "ACCOUNT_NOT_ACTIVE", "Account is not active")
+        await _error(ws, "ACCOUNT_NOT_ACTIVE", "Account is not active", session=session)
         return
 
     session.user_id = user_id
     session.account_type = user.account_type.value
     session.display_name = user.profile.nickname
+
+    logger.info(
+        "ws_auth_ok",
+        extra={
+            "conn_id": session.connection_id,
+            "user_id": user_id,
+            "account_type": session.account_type,
+        },
+    )
 
     await ws.send_json(
         {
@@ -246,10 +286,10 @@ async def _room_create(
     room_service: RoomService,
 ) -> None:
     if not session.is_authenticated:
-        await _error(ws, "NOT_AUTHENTICATED", "Authenticate before creating a room")
+        await _error(ws, "NOT_AUTHENTICATED", "Authenticate before creating a room", session=session)
         return
     if session.in_room:
-        await _error(ws, "ALREADY_IN_ROOM", "Leave your current room first")
+        await _error(ws, "ALREADY_IN_ROOM", "Leave your current room first", session=session)
         return
 
     room = room_service.create_room(
@@ -277,15 +317,15 @@ async def _room_join(
     room_service: RoomService,
 ) -> None:
     if not session.is_authenticated:
-        await _error(ws, "NOT_AUTHENTICATED", "Authenticate before joining a room")
+        await _error(ws, "NOT_AUTHENTICATED", "Authenticate before joining a room", session=session)
         return
     if session.in_room:
-        await _error(ws, "ALREADY_IN_ROOM", "Leave your current room first")
+        await _error(ws, "ALREADY_IN_ROOM", "Leave your current room first", session=session)
         return
 
     room_code = (data.get("room_code") or "").strip().upper()
     if not room_code:
-        await _error(ws, "MISSING_ROOM_CODE", "room_code is required")
+        await _error(ws, "MISSING_ROOM_CODE", "room_code is required", session=session)
         return
 
     try:
@@ -296,7 +336,7 @@ async def _room_join(
             user_id=session.user_id,
         )
     except RoomError as exc:
-        await _error(ws, "ROOM_ERROR", str(exc))
+        await _error(ws, "ROOM_ERROR", str(exc), session=session)
         return
 
     session.room_code = room.room_code
@@ -322,7 +362,7 @@ async def _room_leave(
     room_service: RoomService,
 ) -> None:
     if not session.in_room:
-        await _error(ws, "NOT_IN_ROOM", "You are not in a room")
+        await _error(ws, "NOT_IN_ROOM", "You are not in a room", session=session)
         return
 
     room_code = session.room_code
@@ -350,14 +390,14 @@ async def _ready_set(
     room_service: RoomService,
 ) -> None:
     if not session.in_room:
-        await _error(ws, "NOT_IN_ROOM", "You are not in a room")
+        await _error(ws, "NOT_IN_ROOM", "You are not in a room", session=session)
         return
 
     is_ready = bool(data.get("is_ready", False))
     try:
         room = room_service.set_ready(session.room_code, session.seat_index, is_ready)
     except RoomError as exc:
-        await _error(ws, "ROOM_ERROR", str(exc))
+        await _error(ws, "ROOM_ERROR", str(exc), session=session)
         return
 
     await manager.broadcast_to_room(
@@ -378,13 +418,13 @@ async def _room_start(
     presence_manager: PresenceManager,
 ) -> None:
     if not session.in_room:
-        await _error(ws, "NOT_IN_ROOM", "You are not in a room")
+        await _error(ws, "NOT_IN_ROOM", "You are not in a room", session=session)
         return
 
     try:
         room = room_service.start_room(session.room_code, session.seat_index)
     except RoomError as exc:
-        await _error(ws, "ROOM_ERROR", str(exc))
+        await _error(ws, "ROOM_ERROR", str(exc), session=session)
         return
 
     # Broadcast final lobby state (phase=STARTING, all bots visible).
@@ -400,7 +440,7 @@ async def _room_start(
     try:
         match = match_service.create_match(room)
     except MatchError as exc:
-        await _error(ws, "MATCH_ERROR", str(exc))
+        await _error(ws, "MATCH_ERROR", str(exc), session=session)
         return
 
     session.match_id = match.match_id
@@ -457,23 +497,23 @@ async def _card_select(
     presence_manager: PresenceManager,
 ) -> None:
     if not session.in_room:
-        await _error(ws, "NOT_IN_MATCH", "You are not in an active match")
+        await _error(ws, "NOT_IN_MATCH", "You are not in an active match", session=session)
         return
 
     match = match_service.get_match_by_room(session.room_code)
     if match is None:
-        await _error(ws, "MATCH_NOT_FOUND", "Match not found")
+        await _error(ws, "MATCH_NOT_FOUND", "Match not found", session=session)
         return
 
     card_number = data.get("card_number")
     if card_number is None:
-        await _error(ws, "MISSING_CARD", "card_number is required")
+        await _error(ws, "MISSING_CARD", "card_number is required", session=session)
         return
 
     try:
         match_service.submit_selection(match, session.seat_index, int(card_number))
     except MatchError as exc:
-        await _error(ws, "MATCH_ERROR", str(exc))
+        await _error(ws, "MATCH_ERROR", str(exc), session=session)
         return
 
     # Acknowledge selection to the submitting seat.
@@ -511,12 +551,12 @@ async def _reconnect(
     """
     token = data.get("token")
     if not token:
-        await _error(ws, "MISSING_TOKEN", "token is required")
+        await _error(ws, "MISSING_TOKEN", "token is required", session=session)
         return
 
     entry = presence_manager.lookup_token(token)
     if entry is None:
-        await _error(ws, "INVALID_RECONNECT_TOKEN", "Reconnect token is invalid or expired")
+        await _error(ws, "INVALID_RECONNECT_TOKEN", "Reconnect token is invalid or expired", session=session)
         return
 
     # Re-check account status for registered users so that suspended/deleted
@@ -526,21 +566,21 @@ async def _reconnect(
 
         user = user_repo.get_by_id(db, entry.user_id)
         if user is None or user.status != UserStatus.ACTIVE:
-            await _error(ws, "ACCOUNT_NOT_ACTIVE", "Account is not active")
+            await _error(ws, "ACCOUNT_NOT_ACTIVE", "Account is not active", session=session)
             return
 
     match = match_service.get_match(entry.match_id)
     if match is None:
-        await _error(ws, "MATCH_NOT_FOUND", "Match has already ended")
+        await _error(ws, "MATCH_NOT_FOUND", "Match has already ended", session=session)
         return
 
     seat = match.seats.get(entry.seat_index)
     if seat is None:
-        await _error(ws, "SEAT_NOT_FOUND", "Seat no longer exists in match")
+        await _error(ws, "SEAT_NOT_FOUND", "Seat no longer exists in match", session=session)
         return
 
     if seat.took_over_by_bot:
-        await _error(ws, "SEAT_TAKEN_OVER", "This seat has been permanently taken over by a bot")
+        await _error(ws, "SEAT_TAKEN_OVER", "This seat has been permanently taken over by a bot", session=session)
         return
 
     # Restore full session state.
@@ -767,13 +807,13 @@ async def _quick_match_join(
       6. Send QUEUE_JOINED acknowledgement.
     """
     if not session.is_authenticated:
-        await _error(ws, "NOT_AUTHENTICATED", "Authenticate before joining quick match")
+        await _error(ws, "NOT_AUTHENTICATED", "Authenticate before joining quick match", session=session)
         return
     if session.in_room:
-        await _error(ws, "ALREADY_IN_ROOM", "Leave your current room before joining quick match")
+        await _error(ws, "ALREADY_IN_ROOM", "Leave your current room before joining quick match", session=session)
         return
     if session.in_queue:
-        await _error(ws, "ALREADY_IN_QUEUE", "You are already in the matchmaking queue")
+        await _error(ws, "ALREADY_IN_QUEUE", "You are already in the matchmaking queue", session=session)
         return
 
     # Resolve MMR (guests always get DEFAULT_MMR; not stored).
@@ -854,7 +894,7 @@ async def _quick_match_leave(
 ) -> None:
     """Leave the quick-match queue before a match is formed."""
     if not session.in_queue:
-        await _error(ws, "NOT_IN_QUEUE", "You are not in the matchmaking queue")
+        await _error(ws, "NOT_IN_QUEUE", "You are not in the matchmaking queue", session=session)
         return
 
     entry = matchmaking_service.leave_queue(session.connection_id)
@@ -905,6 +945,17 @@ async def _start_quick_match(
         return
 
     match.is_ranked = is_ranked
+
+    logger.info(
+        "match_start",
+        extra={
+            "match_id": match.match_id,
+            "room_code": room.room_code,
+            "is_ranked": is_ranked,
+            "human_count": len(human_entries),
+            "ai_count": ai_count,
+        },
+    )
 
     # Notify each human: MATCH_FOUND clears in_queue on the client side.
     for seat_idx, entry in enumerate(human_entries):
@@ -1034,16 +1085,16 @@ async def _emote_send(
     from app.services.emote_service import emote_service
 
     if not session.is_authenticated:
-        await _error(ws, "NOT_AUTHENTICATED", "Authenticate before sending emotes")
+        await _error(ws, "NOT_AUTHENTICATED", "Authenticate before sending emotes", session=session)
         return
 
     if not session.in_room:
-        await _error(ws, "NOT_IN_ROOM", "Join a room before sending emotes")
+        await _error(ws, "NOT_IN_ROOM", "Join a room before sending emotes", session=session)
         return
 
     emote_id = data.get("emote_id", "")
     if not emote_service.is_valid_emote(emote_id):
-        await _error(ws, "INVALID_EMOTE", f"Unknown emote: {emote_id!r}")
+        await _error(ws, "INVALID_EMOTE", f"Unknown emote: {emote_id!r}", session=session)
         return
 
     if not emote_service.check_and_record(session.connection_id, emote_id):
@@ -1055,6 +1106,14 @@ async def _emote_send(
             msg = "Emote burst cap reached — slow down"
         else:  # same_emote
             msg = "Send a different emote before repeating"
+        logger.warning(
+            "emote_rate_limited",
+            extra={
+                "conn_id": session.connection_id,
+                "emote_id": emote_id,
+                "reason": reason,
+            },
+        )
         await ws.send_json(
             {
                 "type": "ERROR",

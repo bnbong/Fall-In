@@ -21,10 +21,13 @@ PR-05 changes
 """
 
 import asyncio
+import logging
 import uuid
 
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session
+
+logger = logging.getLogger("fall_in.ws")
 
 from app.config import settings
 from app.database import get_db
@@ -122,6 +125,7 @@ async def websocket_endpoint(
     await manager.connect(ws, conn_id)
     session = WsSession(connection_id=conn_id)
     manager.register_session(conn_id, session)
+    logger.info("ws_connect", extra={"conn_id": conn_id})
 
     heartbeat = asyncio.create_task(_heartbeat_loop(ws, session))
 
@@ -200,3 +204,12 @@ async def websocket_endpoint(
                     )
 
         manager.disconnect(conn_id, session.room_code)
+        logger.info(
+            "ws_disconnect",
+            extra={
+                "conn_id": conn_id,
+                "user_id": session.user_id,
+                "room_code": session.room_code,
+                "in_match": session.in_match,
+            },
+        )

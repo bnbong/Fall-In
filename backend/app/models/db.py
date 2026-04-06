@@ -22,6 +22,7 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
     String,
+    Text,
 )
 from sqlalchemy import (
     Enum as SAEnum,
@@ -53,6 +54,20 @@ class UserStatus(str, enum.Enum):
     ACTIVE = "active"
     SUSPENDED = "suspended"
     DELETED = "deleted"
+
+
+class ReportReasonCode(str, enum.Enum):
+    EMOTE_SPAM = "emote_spam"
+    ABUSIVE_LANGUAGE = "abusive_language"
+    CHEATING = "cheating"
+    NICKNAME_VIOLATION = "nickname_violation"
+    OTHER = "other"
+
+
+class ReportStatus(str, enum.Enum):
+    OPEN = "open"
+    REVIEWED = "reviewed"
+    DISMISSED = "dismissed"
 
 
 # ---------------------------------------------------------------------------
@@ -125,3 +140,42 @@ class UserCollection(Base):
     source: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
     user: Mapped["User"] = relationship("User", back_populates="collection")
+
+
+class Report(Base):
+    """
+    Player-submitted reports for beta moderation.
+
+    reporter_user_id is nullable so that both registered and guest users
+    can submit reports (guest user_id is stored).
+    reported_user_id may be None if the reported player is a guest whose
+    account no longer exists — reported_connection_id preserves the session
+    context for log correlation.
+    """
+
+    __tablename__ = "reports"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_new_uuid)
+    reporter_user_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    reported_user_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    # Preserve WS session context for log correlation even if the user is gone.
+    reported_connection_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    reason_code: Mapped[ReportReasonCode] = mapped_column(
+        SAEnum(ReportReasonCode, values_callable=lambda e: [m.value for m in e]),
+        nullable=False,
+    )
+    # Optional free-form note (max 280 chars; sanitised at service layer).
+    details: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Game context for admin review.
+    room_code: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    match_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    status: Mapped[ReportStatus] = mapped_column(
+        SAEnum(ReportStatus, values_callable=lambda e: [m.value for m in e]),
+        nullable=False,
+        default=ReportStatus.OPEN,
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=_utcnow)
