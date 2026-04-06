@@ -7,7 +7,7 @@ animations on a 4-row isometric board.
 
 import random
 from enum import Enum, auto
-from typing import Optional
+from typing import Callable, Optional
 
 import pygame
 
@@ -168,6 +168,33 @@ class GameScene(Scene, DebugOverlayMixin):
         # Settings gear button (top-right corner)
         self._settings_btn_center = (SCREEN_WIDTH - 230, 30)
         self._settings_btn_radius = 18
+
+        # Emote popup (PR-07) — palette that opens on player icon click.
+        # Wire the send-side by calling set_emote_send_callback() after
+        # construction.  In single-player the palette opens but does nothing.
+        from fall_in.ui.emote_popup import EmotePopup
+
+        self._emote_popup = EmotePopup()
+        # Route emote button clicks through _on_emote_selected so the scene
+        # can own the send logic rather than the popup itself.
+        self._emote_popup.set_callback(self._on_emote_selected)
+        # External send callback — set by the networking layer for multiplayer.
+        self._emote_send_callback: Optional[Callable[[str], None]] = None
+
+        # Player icon position — matches _draw_player_icon_ui()
+        self._player_icon_center = (SCREEN_WIDTH - 170, UI_TOP_BAR_Y + 20)
+        self._player_icon_radius = 28
+
+        # Per-seat emote display state: seat_index → (emote_label, ttl_seconds)
+        # Populated from RemoteGameAdapter in multiplayer (drained in update()),
+        # or directly via show_emote() in single-player / tests.
+        self._emote_display: dict[int, tuple[str, float]] = {}
+        # Display duration for each received emote (seconds)
+        self._emote_display_duration: float = 3.0
+
+        # RemoteGameAdapter for multiplayer — set by the networking layer.
+        # When set, update() drains pending emotes from it each frame.
+        self._remote_adapter: Optional[object] = None  # RemoteGameAdapter
 
         # Timeout SFX (plays every second when timer <= 5)
         from fall_in.config import SOUNDS_DIR
@@ -836,6 +863,9 @@ class GameScene(Scene, DebugOverlayMixin):
                 )
             screen.blit(msg_surface, msg_rect)
 
+        # Emote display — floating emoji badges above player panels (PR-07)
+        self._draw_emote_display(screen, panel_x, panel_start_y, panel_h, panel_spacing)
+
         # Phase indicator
         phase_text = small_font.render(
             f"[{self._get_phase_text()}]", True, AIR_FORCE_BLUE
@@ -912,6 +942,65 @@ class GameScene(Scene, DebugOverlayMixin):
             GamePhase.GAME_OVER: "게임 종료",
         }
         return phase_texts.get(self.phase, "")
+
+    # ------------------------------------------------------------------
+    # Emote display
+    # ------------------------------------------------------------------
+
+    def _draw_emote_display(
+        self,
+        screen: pygame.Surface,
+        panel_x: int,
+        panel_start_y: int,
+        panel_h: int,
+        panel_spacing: int,
+    ) -> None:
+        """
+        Render floating emote badges above each player's sidebar panel.
+
+        Seat 0 (local player) has no sidebar panel; its emote appears above
+        the player icon in the top bar.  Seats 1-3 map to sidebar panels 0-2.
+        """
+        if not self._emote_display:
+            return
+
+        emote_font = get_font(26)
+
+        for seat_index, (emoji, ttl) in self._emote_display.items():
+            # Fade out in the last 0.5 s
+            alpha = 255
+            if ttl < 0.5:
+                alpha = int(255 * (ttl / 0.5))
+
+            if seat_index == 0:
+                # Local player icon (top bar) — display below the icon
+                cx, cy = self._player_icon_center
+                badge_cx = cx
+                badge_cy = cy + self._player_icon_radius + 20
+            else:
+                # Other-player sidebar panel (seat 1 → panel 0, etc.)
+                panel_index = seat_index - 1
+                panel_top = panel_start_y + panel_index * (panel_h + panel_spacing)
+                badge_cx = panel_x + 100  # centre of panel
+                badge_cy = panel_top - 18
+
+            # Render emoji badge
+            emoji_surf = emote_font.render(emoji, True, WHITE)
+            emoji_surf.set_alpha(alpha)
+            emoji_rect = emoji_surf.get_rect(center=(badge_cx, badge_cy))
+
+            # Subtle shadow
+            bg = pygame.Surface(
+                (emoji_rect.width + 10, emoji_rect.height + 6), pygame.SRCALPHA
+            )
+            pygame.draw.rect(
+                bg,
+                (0, 0, 0, min(alpha, 140)),
+                (0, 0, bg.get_width(), bg.get_height()),
+                border_radius=8,
+            )
+            screen.blit(bg, (emoji_rect.x - 5, emoji_rect.y - 3))
+            screen.blit(emoji_surf, emoji_rect)
 
     # ------------------------------------------------------------------
     # Hand drawing
@@ -1012,6 +1101,15 @@ class GameScene(Scene, DebugOverlayMixin):
         if self._settings_popup.handle_event(event):
             return
 
+        # Emote popup: forward non-click events (motion, keyboard) so that
+        # hover tracking and Escape-to-close work, but never block gameplay.
+        # Click events are handled inline in the MOUSEBUTTONDOWN block below
+        # so we can prevent the icon from immediately re-opening the palette
+        # when an outside click dismisses it.
+        if event.type != pygame.MOUSEBUTTONDOWN:
+            if self._emote_popup.handle_event(event):
+                return
+
         # Debug overlay handling (via mixin)
         if self.handle_debug_event(event):
             return
@@ -1028,12 +1126,31 @@ class GameScene(Scene, DebugOverlayMixin):
                     self._confirm_card_selection()
 
         if event.type == pygame.MOUSEBUTTONDOWN:
-            # Settings gear button click
             mx, my = event.pos
+
+            # Emote popup gets first crack at clicks when it is open.
+            # If the click is outside the palette, the popup closes and returns
+            # False — we must NOT then check the player icon, or the palette
+            # would immediately re-open.
+            _popup_was_open = self._emote_popup.visible
+            if _popup_was_open:
+                if self._emote_popup.handle_event(event):
+                    return  # click consumed by palette button / frame
+                # Outside click: palette just closed — skip icon re-check but
+                # fall through so the click still reaches card selection.
+
+            # Settings gear button click
             sx, sy = self._settings_btn_center
             if ((mx - sx) ** 2 + (my - sy) ** 2) ** 0.5 <= self._settings_btn_radius:
                 self._settings_popup.toggle()
                 return
+
+            # Player icon click → open emote palette (only when it was closed)
+            if not _popup_was_open:
+                ix, iy = self._player_icon_center
+                if ((mx - ix) ** 2 + (my - iy) ** 2) ** 0.5 <= self._player_icon_radius:
+                    self._emote_popup.show(self._player_icon_center)
+                    return
 
         if self.phase == GamePhase.SELECTING:
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -1204,10 +1321,88 @@ class GameScene(Scene, DebugOverlayMixin):
     # Update / Render
     # ------------------------------------------------------------------
 
+    def set_emote_send_callback(self, callback: Callable[[str], None]) -> None:
+        """
+        Register the function that transmits an emote to the server.
+
+        Called by the networking layer before the scene starts rendering.
+        In single-player this is never called; the palette opens but does
+        nothing when the player clicks an emote button.
+
+        Example (multiplayer setup)::
+
+            scene.set_emote_send_callback(ws_client.send_emote)
+
+        .. note::
+            TODO (PR-09 WS client bootstrap): call this during the multiplayer
+            scene setup after the WS connection is established, before the
+            first ``update()`` tick.
+        """
+        self._emote_send_callback = callback
+
+    def set_remote_adapter(self, adapter: object) -> None:
+        """
+        Attach a RemoteGameAdapter so that incoming EMOTE_BROADCAST messages
+        are consumed each frame and displayed via show_emote().
+
+        The adapter must expose ``pop_pending_emotes() -> list[(seat, emote_id)]``.
+        Call this once after the match starts and before the first update().
+
+        .. note::
+            TODO (PR-09 WS client bootstrap): call this during the multiplayer
+            scene setup, passing the ``RemoteGameAdapter`` instance that
+            receives ``EMOTE_BROADCAST`` messages from the server.
+        """
+        self._remote_adapter = adapter
+
+    def _on_emote_selected(self, emote_id: str) -> None:
+        """
+        Internal callback wired to EmotePopup.
+
+        Always displays the emote immediately on the local player's panel
+        (seat 0) so single-player mode gives visual feedback.  In multiplayer
+        the send callback transmits it to the server; the server broadcast
+        then triggers show_emote() again via the adapter — the duplicate
+        display is harmless as it simply resets the TTL.
+        """
+        self.show_emote(0, emote_id)
+        if self._emote_send_callback is not None:
+            self._emote_send_callback(emote_id)
+
+    def show_emote(self, seat_index: int, emote_id: str) -> None:
+        """
+        Display an emote above the given seat's panel.
+
+        Called by the networking layer when an EMOTE_BROADCAST arrives, or
+        directly in tests.  Maps emote_id slug to an emoji string for display.
+        """
+        from fall_in.ui.emote_popup import EMOTE_CATALOG
+
+        emoji = emote_id  # fallback: show slug
+        for slug, em, _ in EMOTE_CATALOG:
+            if slug == emote_id:
+                emoji = em
+                break
+        self._emote_display[seat_index] = (emoji, self._emote_display_duration)
+
     def update(self, dt: float) -> None:
         """Update scene state."""
         if self.message_timer > 0:
             self.message_timer -= dt
+
+        # Drain incoming emotes from RemoteGameAdapter (multiplayer only)
+        if self._remote_adapter is not None:
+            for seat_index, emote_id in self._remote_adapter.pop_pending_emotes():
+                self.show_emote(seat_index, emote_id)
+
+        # Decay emote display TTLs
+        expired = [s for s, (_, ttl) in self._emote_display.items() if ttl - dt <= 0]
+        for s in expired:
+            del self._emote_display[s]
+        for s in list(self._emote_display):
+            if s not in expired:
+                emoji, ttl = self._emote_display[s]
+                self._emote_display[s] = (emoji, ttl - dt)
 
         # Screen shake
         if self.screen_shake_timer > 0:
@@ -1405,6 +1600,9 @@ class GameScene(Scene, DebugOverlayMixin):
 
         # Debug overlay (via mixin)
         self.draw_debug_overlay(screen)
+
+        # Emote popup palette (PR-07) — rendered above everything except settings
+        self._emote_popup.render(screen)
 
         # Settings popup (always last — modal overlay)
         self._settings_popup.render(screen)

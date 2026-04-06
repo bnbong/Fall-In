@@ -36,6 +36,10 @@ from typing import Optional
 from fall_in.multiplayer.models import PrivatePlayerState, PublicMatchState
 
 
+# Emote entry: (seat_index, emote_id)
+EmoteEntry = tuple[int, str]
+
+
 class RemoteGameAdapter:
     """
     Client-side adapter for remote (server-authoritative) matches.
@@ -48,6 +52,9 @@ class RemoteGameAdapter:
         self._my_seat = my_seat
         self._public: Optional[PublicMatchState] = None
         self._private: Optional[PrivatePlayerState] = None
+        # Emotes received since the last call to pop_pending_emotes().
+        # The renderer drains this list each frame to trigger display.
+        self._pending_emotes: list[EmoteEntry] = []
 
     # ------------------------------------------------------------------
     # Write path (called by the WS receive loop)
@@ -56,6 +63,25 @@ class RemoteGameAdapter:
     def apply_public_state(self, state: PublicMatchState) -> None:
         """Cache the latest public match state broadcast by the server."""
         self._public = state
+
+    def apply_emote(self, seat_index: int, emote_id: str) -> None:
+        """
+        Record an EMOTE_BROADCAST received from the server.
+
+        The renderer calls pop_pending_emotes() each frame to consume these.
+        """
+        self._pending_emotes.append((seat_index, emote_id))
+
+    def pop_pending_emotes(self) -> list[EmoteEntry]:
+        """
+        Return and clear all emotes received since the last call.
+
+        The renderer should call this once per frame and trigger per-seat
+        display animations for each returned entry.
+        """
+        pending = list(self._pending_emotes)
+        self._pending_emotes.clear()
+        return pending
 
     def apply_private_state(self, state: PrivatePlayerState) -> None:
         """

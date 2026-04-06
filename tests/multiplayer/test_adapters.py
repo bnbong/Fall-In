@@ -313,3 +313,42 @@ class TestRemoteGameAdapter:
         scores = adapter.get_committed_scores()
         assert scores[0] == 5
         assert scores[1] == 12
+
+    # ------------------------------------------------------------------
+    # Emote path (PR-07)
+    # ------------------------------------------------------------------
+
+    def test_pop_pending_emotes_empty_initially(self):
+        adapter = RemoteGameAdapter(my_seat=0)
+        assert adapter.pop_pending_emotes() == []
+
+    def test_apply_emote_queued_for_pop(self):
+        adapter = RemoteGameAdapter(my_seat=0)
+        adapter.apply_emote(seat_index=2, emote_id="smile")
+        pending = adapter.pop_pending_emotes()
+        assert pending == [(2, "smile")]
+
+    def test_pop_pending_emotes_clears_queue(self):
+        adapter = RemoteGameAdapter(my_seat=0)
+        adapter.apply_emote(1, "fire")
+        adapter.pop_pending_emotes()
+        # Second pop must return empty
+        assert adapter.pop_pending_emotes() == []
+
+    def test_apply_emote_multiple_entries_ordered(self):
+        adapter = RemoteGameAdapter(my_seat=0)
+        adapter.apply_emote(0, "thumbsup")
+        adapter.apply_emote(3, "cry")
+        pending = adapter.pop_pending_emotes()
+        assert len(pending) == 2
+        assert pending[0] == (0, "thumbsup")
+        assert pending[1] == (3, "cry")
+
+    def test_apply_emote_independent_of_state(self):
+        """Emotes can arrive before or after public/private state is set."""
+        adapter = RemoteGameAdapter(my_seat=1)
+        adapter.apply_emote(1, "clap")
+        # No public or private state yet — should still work
+        assert not adapter.has_match_started()
+        pending = adapter.pop_pending_emotes()
+        assert pending == [(1, "clap")]

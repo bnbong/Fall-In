@@ -72,6 +72,16 @@ def reset_matchmaking_service():
     matchmaking_service.reset()
 
 
+@pytest.fixture(autouse=True)
+def reset_emote_service():
+    """Clear per-connection rate-limit state between tests."""
+    from app.services.emote_service import emote_service
+
+    emote_service.reset()
+    yield
+    emote_service.reset()
+
+
 @pytest.fixture()
 def db_engine():
     """Fresh in-memory SQLite engine for one test."""

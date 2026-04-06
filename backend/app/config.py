@@ -56,6 +56,18 @@ class Settings(BaseSettings):
     DEFAULT_MMR: int = 1000
     MMR_K_FACTOR: int = 32
 
+    # Emote system (PR-07).
+    # EMOTE_COOLDOWN_SECONDS: minimum gap between any two emotes from one
+    #   connection.  Attempts within this window are rejected with RATE_LIMITED.
+    # EMOTE_BURST_CAP: maximum emotes allowed within EMOTE_BURST_WINDOW_SECONDS.
+    # EMOTE_BURST_WINDOW_SECONDS: sliding window size for burst-cap enforcement.
+    # EMOTE_SAME_REPEAT_CAP: max consecutive sends of the identical emote_id
+    #   before a soft block kicks in (same-emote spam prevention).
+    EMOTE_COOLDOWN_SECONDS: float = 1.5
+    EMOTE_BURST_CAP: int = 3
+    EMOTE_BURST_WINDOW_SECONDS: int = 10
+    EMOTE_SAME_REPEAT_CAP: int = 2
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

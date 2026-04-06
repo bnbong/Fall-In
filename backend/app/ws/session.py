@@ -28,6 +28,10 @@ class WsSession:
     # Cleared when a match is formed or the player leaves the queue manually.
     in_queue: bool = False
 
+    # True when this connection has opted out of receiving emote broadcasts
+    # (PR-07).  Emotes sent by others are silently dropped for this session.
+    emotes_muted: bool = False
+
     @property
     def is_authenticated(self) -> bool:
         return self.display_name is not None

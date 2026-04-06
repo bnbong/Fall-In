@@ -91,6 +91,10 @@ async def handle_message(
         )
     elif msg_type == "QUICK_MATCH_LEAVE":
         await _quick_match_leave(ws, session, matchmaking_service)
+    elif msg_type == "EMOTE_SEND":
+        await _emote_send(ws, session, data, manager)
+    elif msg_type == "EMOTE_MUTE":
+        await _emote_mute(ws, session, data)
     elif msg_type == "PING":
         await ws.send_json({"type": "PONG", "data": {}})
     elif msg_type == "PONG":
@@ -1002,3 +1006,96 @@ async def _start_quick_match(
             room_code=room.room_code,
             on_turn_ready=_on_ready,
         )
+
+
+# ---------------------------------------------------------------------------
+# Emote handlers (PR-07)
+# ---------------------------------------------------------------------------
+
+
+async def _emote_send(
+    ws: WebSocket,
+    session: WsSession,
+    data: dict,
+    manager: ConnectionManager,
+) -> None:
+    """
+    Relay an emote from one player to all room participants.
+
+    Validation:
+      - Session must be authenticated and in a room.
+      - emote_id must be in the permitted catalog.
+      - Per-connection rate limits (cooldown + burst cap) must not be exceeded.
+
+    On success: broadcasts EMOTE_BROADCAST to every room member whose
+    session does not have emotes_muted=True.
+    The sender always receives the broadcast (they see their own emote).
+    """
+    from app.services.emote_service import emote_service
+
+    if not session.is_authenticated:
+        await _error(ws, "NOT_AUTHENTICATED", "Authenticate before sending emotes")
+        return
+
+    if not session.in_room:
+        await _error(ws, "NOT_IN_ROOM", "Join a room before sending emotes")
+        return
+
+    emote_id = data.get("emote_id", "")
+    if not emote_service.is_valid_emote(emote_id):
+        await _error(ws, "INVALID_EMOTE", f"Unknown emote: {emote_id!r}")
+        return
+
+    if not emote_service.check_and_record(session.connection_id, emote_id):
+        reason = emote_service.last_deny_reason(session.connection_id)
+        if reason == "cooldown":
+            cooldown = emote_service.remaining_cooldown(session.connection_id)
+            msg = f"Sending emotes too fast — wait {cooldown:.1f}s"
+        elif reason == "burst":
+            msg = "Emote burst cap reached — slow down"
+        else:  # same_emote
+            msg = "Send a different emote before repeating"
+        await ws.send_json(
+            {
+                "type": "ERROR",
+                "data": {
+                    "code": "EMOTE_RATE_LIMITED",
+                    "reason": reason,
+                    "message": msg,
+                },
+            }
+        )
+        return
+
+    payload = {
+        "type": "EMOTE_BROADCAST",
+        "data": {
+            "seat_index": session.seat_index,
+            "emote_id": emote_id,
+        },
+    }
+
+    # Fan out to every room member, skipping connections with mutes.
+    for conn_id in manager.get_room_members(session.room_code):
+        target_session = manager.get_session(conn_id)
+        if target_session is not None and target_session.emotes_muted:
+            continue
+        await manager.send_to(conn_id, payload)
+
+
+async def _emote_mute(
+    ws: WebSocket,
+    session: WsSession,
+    data: dict,
+) -> None:
+    """
+    Toggle emote broadcast reception for this connection.
+
+    The client sends {"type": "EMOTE_MUTE", "data": {"muted": true|false}}.
+    The server acknowledges with EMOTE_MUTE_ACK carrying the new state.
+    When muted=True, this connection will no longer receive EMOTE_BROADCAST
+    messages until it explicitly unmutes.
+    """
+    muted = bool(data.get("muted", True))
+    session.emotes_muted = muted
+    await ws.send_json({"type": "EMOTE_MUTE_ACK", "data": {"muted": session.emotes_muted}})

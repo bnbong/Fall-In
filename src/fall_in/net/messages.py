@@ -30,13 +30,14 @@ class ClientMessageType(str, Enum):
     READY_SET = "READY_SET"
     ROOM_START = "ROOM_START"
 
-    # Quick match queue
-    QUEUE_JOIN = "QUEUE_JOIN"
-    QUEUE_LEAVE = "QUEUE_LEAVE"
+    # Quick match queue (server uses QUICK_MATCH_* prefix)
+    QUICK_MATCH_JOIN = "QUICK_MATCH_JOIN"
+    QUICK_MATCH_LEAVE = "QUICK_MATCH_LEAVE"
 
     # In-game actions
     CARD_SELECT = "CARD_SELECT"
     EMOTE_SEND = "EMOTE_SEND"
+    EMOTE_MUTE = "EMOTE_MUTE"
 
     # Connection management
     PING = "PING"
@@ -60,6 +61,10 @@ class ServerMessageType(str, Enum):
     MATCH_START = "MATCH_START"
     MATCH_RESULT = "MATCH_RESULT"
 
+    # Quick match queue
+    QUEUE_JOINED = "QUEUE_JOINED"
+    QUEUE_LEFT = "QUEUE_LEFT"
+
     # In-game phases
     PHASE_SELECTING = "PHASE_SELECTING"
     TURN_REVEAL_START = "TURN_REVEAL_START"
@@ -75,9 +80,12 @@ class ServerMessageType(str, Enum):
 
     # Presence / connection
     PLAYER_PRESENCE = "PLAYER_PRESENCE"
+    PLAYER_DISCONNECTED = "PLAYER_DISCONNECTED"
+    RECONNECT_TOKEN = "RECONNECT_TOKEN"
 
     # Social
     EMOTE_BROADCAST = "EMOTE_BROADCAST"
+    EMOTE_MUTE_ACK = "EMOTE_MUTE_ACK"
 
     # Errors
     ERROR = "ERROR"

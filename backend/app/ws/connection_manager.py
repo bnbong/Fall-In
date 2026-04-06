@@ -47,6 +47,10 @@ class ConnectionManager:
             self._room_members[room_code] = set()
         self._room_members[room_code].add(conn_id)
 
+    def get_room_members(self, room_code: str) -> list[str]:
+        """Return a snapshot of connection IDs currently in room_code."""
+        return list(self._room_members.get(room_code, set()))
+
     def leave_room(self, conn_id: str, room_code: str) -> None:
         self._room_members.get(room_code, set()).discard(conn_id)
 
