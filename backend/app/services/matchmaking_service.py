@@ -202,6 +202,7 @@ class MatchmakingService:
                 display_name=entry.display_name,
                 controller_type=SeatControllerType.REMOTE,
                 is_ready=True,
+                account_type=entry.account_type,
                 user_id=entry.user_id,
                 connection_id=entry.connection_id,
             )
@@ -213,6 +214,7 @@ class MatchmakingService:
                 display_name=f"AI Bot {seat_idx + 1}",
                 controller_type=SeatControllerType.BOT,
                 is_ready=True,
+                account_type="bot",
                 user_id=None,
                 connection_id=None,
             )

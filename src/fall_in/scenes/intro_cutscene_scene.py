@@ -379,11 +379,11 @@ class IntroCutsceneScene(Scene):
 
     def _transition_to_title(self) -> None:
         from fall_in.core.game_manager import GameManager, GameState
-        from fall_in.scenes.title_scene import TitleScene
+        from fall_in.scenes.account_gate_scene import AccountGateScene
 
         gm = GameManager()
         gm.state = GameState.TITLE
-        gm.change_scene(TitleScene())
+        gm.change_scene(AccountGateScene())
 
     # ------------------------------------------------------------------
     # Rendering helpers

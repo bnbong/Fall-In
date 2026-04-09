@@ -649,6 +649,7 @@ class TestMultiClientWebSocket:
                     a_created.set()
                     b_joined.wait(timeout=5)
                     ws.receive_json()  # B-join broadcast
+                    ws.receive_json()  # B-ready broadcast
                     ws.send_json({"type": "ROOM_START"})
                     ws.receive_json()  # start broadcast to A
             except Exception as exc:
@@ -661,6 +662,8 @@ class TestMultiClientWebSocket:
                     _ws_auth(ws, token_b)
                     ws.send_json({"type": "ROOM_JOIN", "data": {"room_code": shared["room_code"]}})
                     ws.receive_json()  # ROOM_STATE after join
+                    ws.send_json({"type": "READY_SET", "data": {"is_ready": True}})
+                    ws.receive_json()  # ROOM_STATE after ready
                     b_joined.set()
                     msg = ws.receive_json()  # start broadcast to B
                     shared["b_start"] = msg

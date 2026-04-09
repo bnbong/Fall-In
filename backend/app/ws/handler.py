@@ -33,8 +33,6 @@ from fall_in.net.serializers import private_state_to_dict, public_state_to_dict
 from fastapi import WebSocket
 from jose import JWTError
 
-logger = logging.getLogger("fall_in.ws.handler")
-
 from app.auth.jwt import decode_token
 from app.config import settings
 from app.models.db import UserStatus
@@ -46,6 +44,8 @@ from app.services.room_service import RoomError, RoomService
 from app.ws.connection_manager import ConnectionManager
 from app.ws.presence import PresenceManager
 from app.ws.session import WsSession
+
+logger = logging.getLogger("fall_in.ws.handler")
 
 
 async def handle_message(
@@ -78,6 +78,8 @@ async def handle_message(
         await _room_start(ws, session, manager, room_service, match_service, presence_manager)
     elif msg_type == "CARD_SELECT":
         await _card_select(ws, session, data, manager, match_service, presence_manager)
+    elif msg_type == "ROUND_READY":
+        await _round_ready(ws, session, manager, match_service, room_service, presence_manager)
     elif msg_type == "RECONNECT":
         await _reconnect(
             ws, session, data, manager, room_service, match_service, presence_manager, db
@@ -95,6 +97,8 @@ async def handle_message(
         )
     elif msg_type == "QUICK_MATCH_LEAVE":
         await _quick_match_leave(ws, session, matchmaking_service)
+    elif msg_type == "MATCH_LEAVE":
+        await _match_leave(ws, session, manager, room_service, match_service, presence_manager)
     elif msg_type == "EMOTE_SEND":
         await _emote_send(ws, session, data, manager)
     elif msg_type == "EMOTE_MUTE":
@@ -170,14 +174,96 @@ async def _broadcast_selecting(
 ) -> None:
     """Broadcast PHASE_SELECTING + unicast PRIVATE_HAND_STATE to each human."""
     public = match_service.build_public_state(match)
+    data = public_state_to_dict(public)
+    data["remaining_time"] = settings.CARD_SELECTION_TIMEOUT_SECONDS
     await manager.broadcast_to_room(
         room_code,
         {
             "type": "PHASE_SELECTING",
-            "data": public_state_to_dict(public),
+            "data": data,
         },
     )
     await _broadcast_private_hands(match, manager, match_service)
+
+
+async def _issue_reconnect_tokens(
+    room_code: str,
+    match,
+    manager: ConnectionManager,
+    presence_manager: PresenceManager,
+) -> None:
+    """
+    Issue reconnect tokens for the current round to connected registered seats.
+
+    Guests are intentionally excluded from reconnect support.
+    """
+    for seat in match.seats.values():
+        if seat.controller_type != SeatControllerType.REMOTE or not seat.connection_id:
+            continue
+        if seat.account_type != "registered" or not seat.user_id:
+            continue
+
+        token = presence_manager.issue_token(
+            match_id=match.match_id,
+            room_code=room_code,
+            seat_index=seat.seat_index,
+            user_id=seat.user_id,
+            display_name=seat.display_name,
+            account_type=seat.account_type,
+        )
+        ws_session = manager.get_session(seat.connection_id)
+        if ws_session is not None:
+            ws_session.reconnect_token = token
+        await manager.send_to(
+            seat.connection_id,
+            {
+                "type": "RECONNECT_TOKEN",
+                "data": {
+                    "token": token,
+                    "seat_index": seat.seat_index,
+                    "room_code": room_code,
+                    "match_id": match.match_id,
+                },
+            },
+        )
+
+
+async def _take_over_disconnected_seats_for_new_round(
+    room_code: str,
+    match,
+    manager: ConnectionManager,
+    match_service: MatchService,
+    room_service: RoomService,
+    presence_manager: PresenceManager,
+) -> None:
+    """
+    Finalise any still-disconnected human seats before the next round starts.
+
+    This enforces the "same round only" reconnect rule: once a fresh round
+    begins, a player who did not return in time permanently loses the seat.
+    """
+    for seat in list(match.seats.values()):
+        if (
+            seat.controller_type != SeatControllerType.REMOTE
+            or seat.took_over_by_bot
+            or not seat.is_disconnected
+        ):
+            continue
+
+        presence_manager.cancel_grace_timer(match.match_id, seat.seat_index)
+        presence_manager.revoke_seat_token(match.match_id, seat.seat_index)
+        # Mark for elimination at round end (same as grace-timer expiry).
+        if not seat.player.is_eliminated:
+            match.voluntarily_left_seats.add(seat.seat_index)
+        match_service.takeover_seat(match, seat.seat_index)
+        room_service.mark_participant_bot_takeover(room_code, seat.seat_index)
+        await manager.broadcast_to_room(
+            room_code,
+            {
+                "type": "SEAT_BOT_TAKEOVER",
+                "data": {"seat_index": seat.seat_index},
+            },
+        )
 
 
 def _start_selection_timeout(
@@ -186,6 +272,7 @@ def _start_selection_timeout(
     manager: ConnectionManager,
     match_service: MatchService,
     presence_manager: PresenceManager,
+    room_service: RoomService | None = None,
 ) -> None:
     """
     Schedule a card-selection timeout for the current SELECTING phase.
@@ -198,7 +285,7 @@ def _start_selection_timeout(
     match.selection_started_at = time.time()
 
     async def on_ready(rc: str, m) -> None:
-        await _execute_turn(rc, m, manager, match_service, presence_manager)
+        await _execute_turn(rc, m, manager, match_service, presence_manager, room_service)
 
     presence_manager.start_selection_timeout(
         match_id=match.match_id,
@@ -286,7 +373,12 @@ async def _room_create(
     room_service: RoomService,
 ) -> None:
     if not session.is_authenticated:
-        await _error(ws, "NOT_AUTHENTICATED", "Authenticate before creating a room", session=session)
+        await _error(
+            ws,
+            "NOT_AUTHENTICATED",
+            "Authenticate before creating a room",
+            session=session,
+        )
         return
     if session.in_room:
         await _error(ws, "ALREADY_IN_ROOM", "Leave your current room first", session=session)
@@ -296,6 +388,7 @@ async def _room_create(
         display_name=session.display_name,
         connection_id=session.connection_id,
         user_id=session.user_id,
+        account_type=session.account_type or "guest",
     )
     session.room_code = room.room_code
     session.seat_index = 0
@@ -334,6 +427,7 @@ async def _room_join(
             display_name=session.display_name,
             connection_id=session.connection_id,
             user_id=session.user_id,
+            account_type=session.account_type or "guest",
         )
     except RoomError as exc:
         await _error(ws, "ROOM_ERROR", str(exc), session=session)
@@ -454,29 +548,7 @@ async def _room_start(
         },
     )
 
-    # Issue a reconnect token to each human seat and unicast it.
-    for seat in match.seats.values():
-        if seat.controller_type == SeatControllerType.REMOTE and seat.connection_id:
-            account_type = "registered" if seat.user_id else "guest"
-            token = presence_manager.issue_token(
-                match_id=match.match_id,
-                room_code=session.room_code,
-                seat_index=seat.seat_index,
-                user_id=seat.user_id,
-                display_name=seat.display_name,
-                account_type=account_type,
-            )
-            # Store token on the issuing seat's session (host).
-            # Non-host human sessions receive their token below via send_to.
-            if seat.connection_id == session.connection_id:
-                session.reconnect_token = token
-            await manager.send_to(
-                seat.connection_id,
-                {
-                    "type": "RECONNECT_TOKEN",
-                    "data": {"token": token, "seat_index": seat.seat_index},
-                },
-            )
+    await _issue_reconnect_tokens(session.room_code, match, manager, presence_manager)
 
     # Send initial game state so clients can start rendering.
     await _broadcast_selecting(session.room_code, match, manager, match_service)
@@ -532,6 +604,126 @@ async def _card_select(
         await _execute_turn(session.room_code, match, manager, match_service, presence_manager)
 
 
+async def _round_ready(
+    ws: WebSocket,
+    session: WsSession,
+    manager: ConnectionManager,
+    match_service: MatchService,
+    room_service: RoomService,
+    presence_manager: PresenceManager,
+) -> None:
+    """Acknowledge the round-settlement screen and continue when all are ready."""
+    if not session.in_room:
+        await _error(ws, "NOT_IN_MATCH", "You are not in an active match", session=session)
+        return
+
+    match = match_service.get_match_by_room(session.room_code)
+    if match is None:
+        await _error(ws, "MATCH_NOT_FOUND", "Match not found", session=session)
+        return
+
+    try:
+        everyone_ready = match_service.mark_round_ready(match, session.seat_index)
+    except MatchError as exc:
+        await _error(ws, "MATCH_ERROR", str(exc), session=session)
+        return
+
+    if everyone_ready:
+        presence_manager.cancel_round_settlement_timeout(match.match_id)
+        await _continue_after_round_settlement(
+            session.room_code,
+            match,
+            manager,
+            match_service,
+            room_service,
+            presence_manager,
+        )
+
+
+async def _match_leave(
+    ws: WebSocket,
+    session: WsSession,
+    manager: ConnectionManager,
+    room_service: RoomService,
+    match_service: MatchService,
+    presence_manager: PresenceManager,
+) -> None:
+    """
+    Handle a player voluntarily leaving mid-match.
+
+    The seat is immediately converted to bot control.  If the player was
+    not already eliminated, they are added to voluntarily_left_seats so
+    that finalize_round() will mark them as eliminated at round end.
+    """
+    if not session.in_room:
+        await _error(ws, "NOT_IN_MATCH", "You are not in an active match", session=session)
+        return
+
+    match = match_service.get_match_by_room(session.room_code)
+    if match is None:
+        await _error(ws, "MATCH_NOT_FOUND", "Match not found", session=session)
+        return
+
+    seat = match.seats.get(session.seat_index)
+    if seat is None:
+        await _error(ws, "SEAT_NOT_FOUND", "Seat not found", session=session)
+        return
+
+    room_code = session.room_code
+    seat_index = session.seat_index
+
+    # Mark as voluntarily left (unless already eliminated).
+    if not seat.player.is_eliminated:  # type: ignore[union-attr]
+        match.voluntarily_left_seats.add(seat_index)
+
+    # Convert to bot immediately.
+    if seat.controller_type == SeatControllerType.REMOTE:
+        presence_manager.cancel_grace_timer(match.match_id, seat_index)
+        presence_manager.revoke_seat_token(match.match_id, seat_index)
+        match_service.takeover_seat(match, seat_index)
+        room_service.mark_participant_bot_takeover(room_code, seat_index)
+        await manager.broadcast_to_room(
+            room_code,
+            {
+                "type": "SEAT_BOT_TAKEOVER",
+                "data": {"seat_index": seat_index},
+            },
+        )
+
+    # Acknowledge the leave to the departing client.
+    await ws.send_json({"type": "MATCH_LEAVE_OK", "data": {}})
+
+    # Clear session match state so the client can return to lobby.
+    session.room_code = None
+    session.seat_index = None
+    session.match_id = None
+    session.reconnect_token = None
+    manager.leave_room(session.connection_id, room_code)
+
+    # If this was the last human seat pending selection, check all_selected.
+    if match_service.all_selected(match):
+        presence_manager.cancel_selection_timeout(match.match_id)
+        await _execute_turn(room_code, match, manager, match_service, presence_manager)
+
+    # If round settlement was waiting on this seat, check if everyone ready now.
+    if match_service.has_round_settlement_pending(match):
+        required = {
+            s.seat_index
+            for s in match.seats.values()
+            if s.controller_type == SeatControllerType.REMOTE and not s.player.is_eliminated  # type: ignore[union-attr]
+        }
+        if required.issubset(match.round_settlement_ready_seats):
+            presence_manager.cancel_round_settlement_timeout(match.match_id)
+            await _continue_after_round_settlement(
+                room_code,
+                match,
+                manager,
+                match_service,
+                room_service,
+                presence_manager,
+            )
+
+
 async def _reconnect(
     ws: WebSocket,
     session: WsSession,
@@ -556,7 +748,21 @@ async def _reconnect(
 
     entry = presence_manager.lookup_token(token)
     if entry is None:
-        await _error(ws, "INVALID_RECONNECT_TOKEN", "Reconnect token is invalid or expired", session=session)
+        await _error(
+            ws,
+            "INVALID_RECONNECT_TOKEN",
+            "Reconnect token is invalid or expired",
+            session=session,
+        )
+        return
+
+    if entry.account_type != "registered":
+        await _error(
+            ws,
+            "GUEST_RECONNECT_NOT_ALLOWED",
+            "Guest seats cannot reconnect",
+            session=session,
+        )
         return
 
     # Re-check account status for registered users so that suspended/deleted
@@ -580,8 +786,15 @@ async def _reconnect(
         return
 
     if seat.took_over_by_bot:
-        await _error(ws, "SEAT_TAKEN_OVER", "This seat has been permanently taken over by a bot", session=session)
+        await _error(
+            ws,
+            "SEAT_TAKEN_OVER",
+            "This seat has been permanently taken over by a bot",
+            session=session,
+        )
         return
+
+    old_room_code = session.room_code
 
     # Restore full session state.
     session.user_id = entry.user_id
@@ -595,8 +808,8 @@ async def _reconnect(
 
     # If this socket is already in a room (possibly different), leave it first
     # to prevent cross-room broadcast leaks.
-    if session.room_code:
-        manager.leave_room(session.connection_id, session.room_code)
+    if old_room_code:
+        manager.leave_room(session.connection_id, old_room_code)
 
     # Update match seat and room participant to the new connection.
     match_service.reconnect_seat(match, entry.seat_index, session.connection_id)
@@ -633,6 +846,23 @@ async def _reconnect(
             "data": private_state_to_dict(private),
         }
     )
+    if match_service.has_round_settlement_pending(match):
+        summary = match.round_summary_pending
+        if summary is not None:
+            await ws.send_json(
+                {
+                    "type": "ROUND_RESULT",
+                    "data": {
+                        "round_number": summary.round_number,
+                        "round_danger": summary.round_danger,
+                        "total_scores": summary.total_scores,
+                        "eliminated_seats": summary.eliminated_seats,
+                        "game_over": summary.game_over,
+                        "winner_seat": summary.winner_seat,
+                        "timeout_seconds": settings.ROUND_SETTLEMENT_TIMEOUT_SECONDS,
+                    },
+                }
+            )
 
     # Notify remaining room members.
     await manager.broadcast_to_room(
@@ -650,13 +880,21 @@ async def _execute_turn(
     manager: ConnectionManager,
     match_service: MatchService,
     presence_manager: PresenceManager,
+    room_service: RoomService | None = None,
 ) -> None:
     """
     Resolve a full turn: broadcast each placement step, then either start
     the next selection phase or broadcast round/match end results.
+
+    NOTE: callers are responsible for cancelling the selection timeout
+    before invoking this function.  Cancelling inside _execute_turn would
+    self-cancel the task when the call originates from _selection_timer's
+    on_turn_ready callback, interrupting the turn resolution.
     """
-    # Cancel any lingering selection timeout for this turn.
-    presence_manager.cancel_selection_timeout(match.match_id)
+    if room_service is None:
+        from app.ws.endpoint import get_room_service
+
+        room_service = get_room_service()
 
     await manager.broadcast_to_room(
         room_code,
@@ -683,6 +921,7 @@ async def _execute_turn(
                     "penalty_score": step.penalty_score,
                     "had_to_take_row": step.had_to_take_row,
                     "placement_order": step.order,
+                    "penalty_card_count": step.penalty_card_count,
                 },
             },
         )
@@ -706,6 +945,7 @@ async def _execute_turn(
     rules = match.rules  # fall_in.core.rules.GameRules
     if rules.is_round_over():
         summary = match_service.finalize_round(match)
+        match_service.begin_round_settlement(match, summary)
 
         await manager.broadcast_to_room(
             room_code,
@@ -718,44 +958,103 @@ async def _execute_turn(
                     "eliminated_seats": summary.eliminated_seats,
                     "game_over": summary.game_over,
                     "winner_seat": summary.winner_seat,
+                    "timeout_seconds": settings.ROUND_SETTLEMENT_TIMEOUT_SECONDS,
                 },
             },
         )
-
-        if summary.game_over:
-            await manager.broadcast_to_room(
+        presence_manager.start_round_settlement_timeout(
+            match.match_id,
+            lambda: _continue_after_round_settlement(
                 room_code,
-                {
-                    "type": "MATCH_RESULT",
-                    "data": {
-                        "match_id": match.match_id,
-                        "winner_seat": summary.winner_seat,
-                        "final_scores": summary.total_scores,
-                    },
-                },
-            )
-            # Persist hidden MMR for eligible ranked quick-match results.
-            if match.is_ranked and summary.winner_seat is not None:
-                _apply_mmr_update(match, summary.winner_seat)
-            presence_manager.revoke_match_tokens(match.match_id)
-            match_service.delete_match(match.match_id)
-        else:
-            match_service.start_next_round(match)
-            await _broadcast_selecting(room_code, match, manager, match_service)
-            # Short-circuit: if bots hold all seats, no humans need to select.
-            if match_service.all_selected(match):
-                await _execute_turn(room_code, match, manager, match_service, presence_manager)
-            else:
-                _start_selection_timeout(room_code, match, manager, match_service, presence_manager)
+                match,
+                manager,
+                match_service,
+                room_service,
+                presence_manager,
+            ),
+        )
     else:
         # More turns to go in this round — re-select bots, then re-enter SELECTING.
         match_service.reselect_bots(match)
         await _broadcast_selecting(room_code, match, manager, match_service)
         # Short-circuit: if bots hold all seats, no humans need to select.
         if match_service.all_selected(match):
-            await _execute_turn(room_code, match, manager, match_service, presence_manager)
+            await _execute_turn(
+                room_code,
+                match,
+                manager,
+                match_service,
+                presence_manager,
+                room_service,
+            )
         else:
-            _start_selection_timeout(room_code, match, manager, match_service, presence_manager)
+            _start_selection_timeout(
+                room_code,
+                match,
+                manager,
+                match_service,
+                presence_manager,
+                room_service,
+            )
+
+
+async def _continue_after_round_settlement(
+    room_code: str,
+    match,
+    manager: ConnectionManager,
+    match_service: MatchService,
+    room_service: RoomService,
+    presence_manager: PresenceManager,
+) -> None:
+    """
+    Resume match flow after the round-settlement screen.
+
+    Non-gameover matches start the next round; gameover matches emit
+    MATCH_RESULT and then clean up the match.
+    """
+    if not match_service.has_round_settlement_pending(match):
+        return
+
+    summary = match_service.clear_round_settlement(match)
+    if summary is None:
+        return
+
+    presence_manager.cancel_round_settlement_timeout(match.match_id)
+
+    if summary.game_over:
+        await manager.broadcast_to_room(
+            room_code,
+            {
+                "type": "MATCH_RESULT",
+                "data": {
+                    "match_id": match.match_id,
+                    "winner_seat": summary.winner_seat,
+                    "final_scores": summary.total_scores,
+                },
+            },
+        )
+        if match.is_ranked and summary.winner_seat is not None:
+            _apply_mmr_update(match, summary.winner_seat)
+        presence_manager.revoke_match_tokens(match.match_id)
+        match_service.delete_match(match.match_id)
+        return
+
+    await _take_over_disconnected_seats_for_new_round(
+        room_code,
+        match,
+        manager,
+        match_service,
+        room_service,
+        presence_manager,
+    )
+    presence_manager.revoke_match_tokens(match.match_id)
+    match_service.start_next_round(match)
+    await _issue_reconnect_tokens(room_code, match, manager, presence_manager)
+    await _broadcast_selecting(room_code, match, manager, match_service)
+    if match_service.all_selected(match):
+        await _execute_turn(room_code, match, manager, match_service, presence_manager)
+    else:
+        _start_selection_timeout(room_code, match, manager, match_service, presence_manager)
 
 
 # ---------------------------------------------------------------------------
@@ -807,13 +1106,28 @@ async def _quick_match_join(
       6. Send QUEUE_JOINED acknowledgement.
     """
     if not session.is_authenticated:
-        await _error(ws, "NOT_AUTHENTICATED", "Authenticate before joining quick match", session=session)
+        await _error(
+            ws,
+            "NOT_AUTHENTICATED",
+            "Authenticate before joining quick match",
+            session=session,
+        )
         return
     if session.in_room:
-        await _error(ws, "ALREADY_IN_ROOM", "Leave your current room before joining quick match", session=session)
+        await _error(
+            ws,
+            "ALREADY_IN_ROOM",
+            "Leave your current room before joining quick match",
+            session=session,
+        )
         return
     if session.in_queue:
-        await _error(ws, "ALREADY_IN_QUEUE", "You are already in the matchmaking queue", session=session)
+        await _error(
+            ws,
+            "ALREADY_IN_QUEUE",
+            "You are already in the matchmaking queue",
+            session=session,
+        )
         return
 
     # Resolve MMR (guests always get DEFAULT_MMR; not stored).
@@ -993,30 +1307,7 @@ async def _start_quick_match(
         },
     )
 
-    # Issue reconnect tokens to each human seat.
-    for seat in match.seats.values():
-        if seat.controller_type == SeatControllerType.REMOTE and seat.connection_id:
-            account_type = seat.user_id and "registered" or "guest"
-            # Check if there's a matching entry to determine account_type accurately.
-            for e in human_entries:
-                if e.connection_id == seat.connection_id:
-                    account_type = e.account_type
-                    break
-            token = presence_manager.issue_token(
-                match_id=match.match_id,
-                room_code=room.room_code,
-                seat_index=seat.seat_index,
-                user_id=seat.user_id,
-                display_name=seat.display_name,
-                account_type=account_type,
-            )
-            await manager.send_to(
-                seat.connection_id,
-                {
-                    "type": "RECONNECT_TOKEN",
-                    "data": {"token": token, "seat_index": seat.seat_index},
-                },
-            )
+    await _issue_reconnect_tokens(room.room_code, match, manager, presence_manager)
 
     # Send initial game state.
     public = match_service.build_public_state(match)

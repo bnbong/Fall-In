@@ -38,6 +38,8 @@ class PresenceManager:
         self._grace_tasks: dict[str, asyncio.Task] = {}
         # match_id -> asyncio.Task
         self._selection_tasks: dict[str, asyncio.Task] = {}
+        # match_id -> asyncio.Task
+        self._settlement_tasks: dict[str, asyncio.Task] = {}
 
     # ------------------------------------------------------------------
     # Reconnect token management
@@ -146,6 +148,9 @@ class PresenceManager:
                 return  # already reconnected or already taken over
 
             # Grace expired — permanently convert to bot in both match and room.
+            # Mark for elimination at round end.
+            if not seat.player.is_eliminated:
+                match.voluntarily_left_seats.add(seat_index)
             match_service.takeover_seat(match, seat_index)
             # Sync room participant so human-count checks remain correct.
             room_service.mark_participant_bot_takeover(room_code, seat_index)
@@ -214,6 +219,7 @@ class PresenceManager:
         room_code: str,
         on_turn_ready: Callable[[str, Any], Awaitable[None]],
     ) -> None:
+        _task = asyncio.current_task()
         try:
             await asyncio.sleep(settings.CARD_SELECTION_TIMEOUT_SECONDS)
 
@@ -231,11 +237,51 @@ class PresenceManager:
                 )
 
             if match_service.all_selected(match):
+                # Remove self from the task dict before calling on_turn_ready.
+                # on_turn_ready → _execute_turn may start a *new* selection
+                # timeout for the next turn; if we're still registered, that
+                # call would cancel this task mid-execution.
+                if self._selection_tasks.get(match_id) is _task:
+                    del self._selection_tasks[match_id]
                 await on_turn_ready(room_code, match)
         except asyncio.CancelledError:
             pass
         finally:
-            self._selection_tasks.pop(match_id, None)
+            # Only clean up if this task is still the registered one
+            # (a newer timer for the next turn may already be stored).
+            if self._selection_tasks.get(match_id) is _task:
+                del self._selection_tasks[match_id]
+
+    # ------------------------------------------------------------------
+    # Round-settlement timeout
+    # ------------------------------------------------------------------
+
+    def start_round_settlement_timeout(
+        self,
+        match_id: str,
+        on_timeout: Callable[[], Awaitable[None]],
+    ) -> None:
+        """Start the post-round settlement timeout for one match."""
+        self._cancel_task(self._settlement_tasks, match_id)
+        self._settlement_tasks[match_id] = asyncio.create_task(
+            self._round_settlement_timer(match_id, on_timeout)
+        )
+
+    def cancel_round_settlement_timeout(self, match_id: str) -> None:
+        self._cancel_task(self._settlement_tasks, match_id)
+
+    async def _round_settlement_timer(
+        self,
+        match_id: str,
+        on_timeout: Callable[[], Awaitable[None]],
+    ) -> None:
+        try:
+            await asyncio.sleep(settings.ROUND_SETTLEMENT_TIMEOUT_SECONDS)
+            await on_timeout()
+        except asyncio.CancelledError:
+            pass
+        finally:
+            self._settlement_tasks.pop(match_id, None)
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -254,8 +300,12 @@ class PresenceManager:
         for task in list(self._selection_tasks.values()):
             if not task.done():
                 task.cancel()
+        for task in list(self._settlement_tasks.values()):
+            if not task.done():
+                task.cancel()
         self._grace_tasks.clear()
         self._selection_tasks.clear()
+        self._settlement_tasks.clear()
         self._repo.clear()
 
     # ------------------------------------------------------------------

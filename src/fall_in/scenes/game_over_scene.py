@@ -45,13 +45,18 @@ class GameOverScene(Scene):
     PHASE_DETAILS = 1
 
     def __init__(
-        self, winner: Optional[Player], players: list[Player], round_number: int
+        self,
+        winner: Optional[Player],
+        players: list[Player],
+        round_number: int,
+        early_exit: bool = False,
     ):
         super().__init__()
         self.winner = winner
         self.players = players
         self.round_number = round_number
         self.phase = self.PHASE_BANNER
+        self.early_exit = early_exit
 
         # Find human player
         self.human_player = next(
@@ -59,16 +64,23 @@ class GameOverScene(Scene):
         )
         self.is_victory = (winner == self.human_player) if winner else False
 
+        # Early exit: force defeat, no rewards, no medals
+        if self.early_exit:
+            self.is_victory = False
+
         # Check for coup ending
-        self.is_coup_ending = self._check_coup_ending()
+        self.is_coup_ending = self._check_coup_ending() if not self.early_exit else False
 
         # Calculate and apply rewards
-        self.reward = self._calculate_reward()
+        self.reward = 0 if self.early_exit else self._calculate_reward()
 
         from fall_in.core.game_manager import GameManager
 
         GameManager().add_currency(self.reward)
-        self._award_medals()
+        if not self.early_exit:
+            self._award_medals()
+        else:
+            self.new_medals = []
 
         # If coup ending achieved, unlock prestige
         if self.is_coup_ending:
@@ -81,19 +93,26 @@ class GameOverScene(Scene):
         self._setup_buttons()
 
         # Determine ending scenario and load background image
-        from fall_in.core.ending_manager import EndingManager
-        from fall_in.core.smuggling_manager import SmugglingManager
         from fall_in.utils.asset_manifest import AssetManifest
 
-        smuggled = SmugglingManager().get_smuggled_soldiers()
-        self._scenario = EndingManager().determine_ending(self.is_victory, smuggled)
+        if self.early_exit:
+            # Early exit uses defeat_x.png background
+            bg_stem = "defeat_x"
+            self._scenario = None
+        else:
+            from fall_in.core.ending_manager import EndingManager
+            from fall_in.core.smuggling_manager import SmugglingManager
+
+            smuggled = SmugglingManager().get_smuggled_soldiers()
+            self._scenario = EndingManager().determine_ending(self.is_victory, smuggled)
+            result_str = "victory" if self.is_victory else "defeat"
+            bg_stem = f"{result_str}_{self._scenario.bg_suffix}"
 
         # Load background image from filesystem:
         #   gameover/{result}/{result}_{bg_suffix}.png
-        result_str = "victory" if self.is_victory else "defeat"
-        bg_stem = f"{result_str}_{self._scenario.bg_suffix}"
         self._bg_image: pygame.Surface | None = None
-        bg_path = GAMEOVER_IMAGES_DIR / result_str / f"{bg_stem}.png"
+        bg_dir = "defeat" if (not self.is_victory or self.early_exit) else "victory"
+        bg_path = GAMEOVER_IMAGES_DIR / bg_dir / f"{bg_stem}.png"
         if bg_path.exists():
             try:
                 raw = pygame.image.load(str(bg_path)).convert()
@@ -109,7 +128,8 @@ class GameOverScene(Scene):
             self._ui_images.update(AssetManifest.get_loaded(category))
 
         # Record this ending as seen (store bg stem for gallery, e.g. "victory_bg")
-        self._record_seen_ending(bg_stem)
+        if not self.early_exit:
+            self._record_seen_ending(bg_stem)
 
         # Stop in-game BGM and play result SFX
         from fall_in.core.audio_manager import AudioManager

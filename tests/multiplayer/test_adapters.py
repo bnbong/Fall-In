@@ -352,3 +352,75 @@ class TestRemoteGameAdapter:
         assert not adapter.has_match_started()
         pending = adapter.pop_pending_emotes()
         assert pending == [(1, "clap")]
+
+    def test_turn_reveal_steps_are_buffered_until_consumed(self):
+        adapter = RemoteGameAdapter(my_seat=0)
+        state = _make_public_state()
+
+        adapter.begin_turn_reveal()
+        adapter.queue_turn_reveal_step(
+            {
+                "seat_index": 2,
+                "card_number": 44,
+                "placement_order": 1,
+                "card_danger": 3,
+            },
+            state,
+        )
+        adapter.finish_turn_reveal()
+
+        queued = adapter.pop_next_reveal_step()
+        assert queued is not None
+        step, snapshot = queued
+        assert step.seat_index == 2
+        assert step.card_number == 44
+        assert step.placement_order == 1
+        assert snapshot is state
+
+    def test_post_reveal_public_states_flush_after_animation(self):
+        adapter = RemoteGameAdapter(my_seat=0)
+        state = _make_public_state()
+
+        adapter.begin_turn_reveal()
+        adapter.queue_post_reveal_public_state(state)
+        adapter.finish_turn_reveal()
+
+        flushed = adapter.flush_post_reveal_public_states()
+        assert flushed == [state]
+        assert adapter.flush_post_reveal_public_states() == []
+
+    def test_selecting_phase_start_is_consumed_once(self):
+        adapter = RemoteGameAdapter(my_seat=0)
+
+        adapter.notify_selecting_phase_started()
+
+        result = adapter.consume_selecting_phase_started()
+        assert result is not None  # Returns remaining_time (float)
+        assert adapter.consume_selecting_phase_started() is None
+
+    def test_selecting_phase_start_preserves_remaining_time(self):
+        adapter = RemoteGameAdapter(my_seat=0)
+
+        adapter.notify_selecting_phase_started(remaining_time=25.5)
+
+        result = adapter.consume_selecting_phase_started()
+        assert result == 25.5
+        assert adapter.consume_selecting_phase_started() is None
+
+    def test_round_result_queue_preserves_order(self):
+        adapter = RemoteGameAdapter(my_seat=0)
+
+        adapter.queue_round_result({"round_number": 1})
+        adapter.queue_round_result({"round_number": 2})
+
+        assert adapter.pop_round_result() == {"round_number": 1}
+        assert adapter.pop_round_result() == {"round_number": 2}
+        assert adapter.pop_round_result() is None
+
+    def test_match_result_queue_returns_oldest_payload(self):
+        adapter = RemoteGameAdapter(my_seat=0)
+
+        adapter.queue_match_result({"winner_seat": 2})
+
+        assert adapter.pop_match_result() == {"winner_seat": 2}
+        assert adapter.pop_match_result() is None

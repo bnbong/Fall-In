@@ -129,5 +129,6 @@ def private_state_to_dict(state: PrivatePlayerState) -> dict[str, Any]:
         "seat_index": state.seat_index,
         "hand": hand,
         "has_selected": state.has_selected,
+        "is_eliminated": state.is_eliminated,
     }
     return result

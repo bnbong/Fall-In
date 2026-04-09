@@ -31,6 +31,7 @@ class RoomParticipant:
     display_name: str
     controller_type: SeatControllerType
     is_ready: bool = False
+    account_type: str = "guest"  # "registered" | "guest" | "bot"
     user_id: Optional[str] = None  # None for guests and bots
     connection_id: Optional[str] = None  # None for bots
 

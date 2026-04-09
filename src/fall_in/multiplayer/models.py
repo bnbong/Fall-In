@@ -150,6 +150,7 @@ class PrivatePlayerState:
     seat_index: int
     hand: list[MatchCardPublic] = field(default_factory=list)
     has_selected: bool = False
+    is_eliminated: bool = False
 
 
 # ---------------------------------------------------------------------------

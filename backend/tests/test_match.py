@@ -7,6 +7,8 @@ Structure:
   TestMatchWebSocket    — WS integration tests for the full match flow
 """
 
+import asyncio
+
 import pytest
 from fall_in.core.rules import RoundPhase
 from fall_in.multiplayer.models import MatchCardPublic
@@ -19,12 +21,14 @@ from fastapi.testclient import TestClient
 
 from app.database import get_db
 from app.main import app
+from app.models.match import RoundSummary
 from app.models.room import Room, SeatControllerType
 from app.repositories.match_repo import InMemoryMatchRepo
 from app.repositories.room_repo import InMemoryRoomRepo
 from app.services.match_service import MatchError, MatchService
 from app.services.room_service import RoomService
 from app.ws.endpoint import get_match_service, get_room_service
+from app.ws.handler import _continue_after_round_settlement
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -97,6 +101,16 @@ def _consume_until(ws, target_type: str, max_msgs: int = 20) -> dict:
         if msg["type"] == target_type:
             return msg
     raise AssertionError(f"Did not receive {target_type!r} in {max_msgs} messages")
+
+
+def _play_remote_turn(ws) -> None:
+    """Play one turn in a 1-human match until TURN_RESOLVED is reached."""
+    _consume_until(ws, "PHASE_SELECTING")
+    hand_msg = _consume_until(ws, "PRIVATE_HAND_STATE")
+    card_number = hand_msg["data"]["hand"][0]["number"]
+    ws.send_json({"type": "CARD_SELECT", "data": {"card_number": card_number}})
+    _consume_until(ws, "PRIVATE_HAND_STATE")
+    _consume_until(ws, "TURN_RESOLVED")
 
 
 # ---------------------------------------------------------------------------
@@ -571,6 +585,37 @@ class TestMatchWebSocket:
                     for field in _PRIVATE_CARD_FIELDS:
                         assert field not in card_dict
 
+    def test_round_result_waits_for_round_ready_before_next_round(self, client, match_service):
+        token = _register(client, "ms_round_ready@example.com", "MSRoundReady")
+        with client.websocket_connect("/ws") as ws:
+            _ws_auth(ws, token)
+            ws.send_json({"type": "ROOM_CREATE", "data": {}})
+            room_msg = _consume_until(ws, "ROOM_STATE")
+            room_code = room_msg["data"]["room_code"]
+            ws.send_json({"type": "ROOM_START", "data": {}})
+            _consume_until(ws, "MATCH_START")
+
+            for _ in range(9):
+                _play_remote_turn(ws)
+
+            _consume_until(ws, "PHASE_SELECTING")
+            hand_msg = _consume_until(ws, "PRIVATE_HAND_STATE")
+            card_number = hand_msg["data"]["hand"][0]["number"]
+            ws.send_json({"type": "CARD_SELECT", "data": {"card_number": card_number}})
+            _consume_until(ws, "PRIVATE_HAND_STATE")
+            _consume_until(ws, "TURN_RESOLVED")
+            round_result = _consume_until(ws, "ROUND_RESULT")
+
+            assert round_result["data"]["round_number"] == 1
+            match = match_service.get_match_by_room(room_code)
+            assert match is not None
+            assert match_service.has_round_settlement_pending(match)
+
+            ws.send_json({"type": "ROUND_READY", "data": {}})
+            next_phase = _consume_until(ws, "PHASE_SELECTING")
+            assert next_phase["data"]["round_number"] == 2
+            assert not match_service.has_round_settlement_pending(match)
+
 
 # ---------------------------------------------------------------------------
 # Regression tests for code-review fixes
@@ -611,6 +656,10 @@ class TestRegressionFixes:
 
                 ws_guest.send_json({"type": "ROOM_JOIN", "data": {"room_code": room_code}})
                 _consume_until(ws_guest, "ROOM_STATE")  # join broadcast
+
+                # Guest must be ready before host can start.
+                ws_guest.send_json({"type": "READY_SET", "data": {"is_ready": True}})
+                _consume_until(ws_guest, "ROOM_STATE")  # ready broadcast
 
                 # Host starts — fills seats 2-3 with bots.
                 ws_host.send_json({"type": "ROOM_START", "data": {}})
@@ -759,3 +808,70 @@ class TestRegressionFixes:
         assert [s.seat_index for s in match.last_turn_steps] == [
             s.seat_index for s in steps_from_stepwise
         ]
+
+
+class TestRoundSettlementFlow:
+    def test_continue_after_round_settlement_broadcasts_match_result_for_game_over(
+        self, match_service, room_service
+    ):
+        room = _make_full_room(room_service)
+        match = match_service.create_match(room)
+        summary = RoundSummary(
+            round_number=3,
+            round_danger={0: 2, 1: 0, 2: 0, 3: 0},
+            total_scores={0: 12, 1: 40, 2: 66, 3: 66},
+            eliminated_seats=[2, 3],
+            game_over=True,
+            winner_seat=0,
+        )
+        match_service.begin_round_settlement(match, summary)
+
+        class _FakeManager:
+            def __init__(self) -> None:
+                self.broadcasts: list[tuple[str, dict]] = []
+
+            async def broadcast_to_room(self, room_code: str, payload: dict) -> None:
+                self.broadcasts.append((room_code, payload))
+
+        class _FakePresence:
+            def __init__(self) -> None:
+                self.cancelled: list[str] = []
+                self.revoked: list[str] = []
+
+            def cancel_round_settlement_timeout(self, match_id: str) -> None:
+                self.cancelled.append(match_id)
+
+            def revoke_match_tokens(self, match_id: str) -> None:
+                self.revoked.append(match_id)
+
+        manager = _FakeManager()
+        presence = _FakePresence()
+        fake_room_service = object()
+
+        asyncio.run(
+            _continue_after_round_settlement(
+                room.room_code,
+                match,
+                manager,
+                match_service,
+                fake_room_service,
+                presence,
+            )
+        )
+
+        assert manager.broadcasts == [
+            (
+                room.room_code,
+                {
+                    "type": "MATCH_RESULT",
+                    "data": {
+                        "match_id": match.match_id,
+                        "winner_seat": 0,
+                        "final_scores": {0: 12, 1: 40, 2: 66, 3: 66},
+                    },
+                },
+            )
+        ]
+        assert presence.cancelled == [match.match_id]
+        assert presence.revoked == [match.match_id]
+        assert match_service.get_match(match.match_id) is None

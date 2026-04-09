@@ -16,7 +16,6 @@ import pytest
 from app.models.db import ReportReasonCode, ReportStatus
 from app.services.report_service import ReportError, submit_report
 
-
 # ===========================================================================
 # Helpers
 # ===========================================================================
@@ -141,7 +140,7 @@ class TestReportService:
         assert report.details is None
 
     def test_duplicate_report_returns_existing(self, db):
-        """Submitting the same (reporter, reported, reason, match) twice returns the first report."""
+        """Submitting same (reporter, reported, reason, match) twice returns first."""
         first = submit_report(
             db,
             reporter_user_id="reporter-dup",
@@ -448,7 +447,7 @@ class TestAdminEndpoints:
         )
         assert resp.status_code == 200
         body = resp.json()
-        assert len(body["items"]) == 2       # page has 2 items
-        assert body["total"] == 5            # but total reflects all 5 rows
+        assert len(body["items"]) == 2  # page has 2 items
+        assert body["total"] == 5  # but total reflects all 5 rows
         assert body["limit"] == 2
         assert body["offset"] == 0

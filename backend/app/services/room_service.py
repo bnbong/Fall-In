@@ -34,13 +34,15 @@ class RoomService:
         display_name: str,
         connection_id: str,
         user_id: Optional[str] = None,
+        account_type: str = "guest",
     ) -> Room:
         room_code = self.repo.generate_room_code()
         host = RoomParticipant(
             seat_index=0,
             display_name=display_name,
             controller_type=SeatControllerType.REMOTE,
-            is_ready=False,
+            is_ready=True,
+            account_type=account_type,
             user_id=user_id,
             connection_id=connection_id,
         )
@@ -63,6 +65,7 @@ class RoomService:
         display_name: str,
         connection_id: str,
         user_id: Optional[str] = None,
+        account_type: str = "guest",
     ) -> Room:
         room = self.repo.get(room_code)
         if room is None:
@@ -77,6 +80,7 @@ class RoomService:
             display_name=display_name,
             controller_type=SeatControllerType.REMOTE,
             is_ready=False,
+            account_type=account_type,
             user_id=user_id,
             connection_id=connection_id,
         )
@@ -124,12 +128,6 @@ class RoomService:
     # ------------------------------------------------------------------
     # Ready toggle
     # ------------------------------------------------------------------
-    #
-    # READY_SET is cosmetic / informational only.
-    # The host can call start_room() regardless of whether other players
-    # have toggled ready.  This is an intentional design decision:
-    # the host controls pacing; ready flags are a social signal, not a gate.
-    # This rule is fixed here before PR-04 match handoff is built.
 
     def set_ready(self, room_code: str, seat_index: int, is_ready: bool) -> Room:
         room = self.repo.get(room_code)
@@ -159,6 +157,14 @@ class RoomService:
         if room.phase != RoomPhase.WAITING:
             raise RoomError("Room is already starting")
 
+        # All human participants must be ready before the host can start.
+        for participant in room.participants.values():
+            if (
+                participant.controller_type == SeatControllerType.REMOTE
+                and not participant.is_ready
+            ):
+                raise RoomError("Not all players are ready")
+
         for seat_idx in range(4):
             if seat_idx not in room.participants:
                 room.participants[seat_idx] = RoomParticipant(
@@ -166,6 +172,7 @@ class RoomService:
                     display_name=f"AI Bot {seat_idx + 1}",
                     controller_type=SeatControllerType.BOT,
                     is_ready=True,
+                    account_type="bot",
                     user_id=None,
                     connection_id=None,
                 )
@@ -225,6 +232,7 @@ class RoomService:
         if participant is None:
             return
         participant.controller_type = SeatControllerType.BOT
+        participant.account_type = "bot"
         participant.connection_id = None
         self.repo.update(room)
 

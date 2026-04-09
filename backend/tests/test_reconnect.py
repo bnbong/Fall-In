@@ -96,12 +96,35 @@ def _ws_auth(ws, token: str) -> None:
     ws.receive_json()  # AUTH_OK
 
 
+def _guest_token(client: TestClient, nickname: str) -> str:
+    resp = client.post("/auth/guest", json={"nickname": nickname})
+    assert resp.status_code == 200, resp.text
+    return resp.json()["access_token"]
+
+
+def _ws_auth_guest(ws, token: str) -> None:
+    ws.send_json({"type": "WS_HELLO", "data": {}})
+    ws.receive_json()  # WS_WELCOME
+    ws.send_json({"type": "AUTH_GUEST", "data": {"token": token}})
+    ws.receive_json()  # AUTH_OK
+
+
 def _consume_until(ws, target_type: str, max_msgs: int = 20) -> dict:
     for _ in range(max_msgs):
         msg = ws.receive_json()
         if msg["type"] == target_type:
             return msg
     raise AssertionError(f"Did not receive {target_type!r} in {max_msgs} messages")
+
+
+def _play_remote_turn(ws) -> None:
+    """Play one remote-human turn until TURN_RESOLVED is reached."""
+    _consume_until(ws, "PHASE_SELECTING")
+    hand_msg = _consume_until(ws, "PRIVATE_HAND_STATE")
+    card_number = hand_msg["data"]["hand"][0]["number"]
+    ws.send_json({"type": "CARD_SELECT", "data": {"card_number": card_number}})
+    _consume_until(ws, "PRIVATE_HAND_STATE")
+    _consume_until(ws, "TURN_RESOLVED")
 
 
 def _make_full_room(room_service: RoomService, host_name: str = "Host") -> Room:
@@ -176,6 +199,22 @@ class TestReconnectToken:
             reconnect_msg = _consume_until(ws, "RECONNECT_TOKEN", max_msgs=30)
         assert "token" in reconnect_msg["data"]
         assert reconnect_msg["data"]["seat_index"] == 0
+
+    def test_guest_match_start_does_not_issue_reconnect_token(self, client: TestClient):
+        """Guest-controlled seats must not receive reconnect tokens."""
+        token = _guest_token(client, "GuestNoReconnect")
+        with client.websocket_connect("/ws") as ws:
+            _ws_auth_guest(ws, token)
+            ws.send_json({"type": "ROOM_CREATE", "data": {}})
+            _consume_until(ws, "ROOM_STATE")
+            ws.send_json({"type": "ROOM_START", "data": {}})
+
+            seen_types = set()
+            for _ in range(4):
+                msg = ws.receive_json()
+                seen_types.add(msg["type"])
+
+        assert "RECONNECT_TOKEN" not in seen_types
 
     def test_token_lookup_valid(self, reconnect_repo: InMemoryReconnectRepo):
         """A freshly created token is retrievable until TTL expires."""
@@ -358,6 +397,43 @@ class TestReconnectFlow:
         assert updated is not None
         assert updated.participants[0].connection_id == "new-conn"
 
+    def test_registered_old_round_token_is_rejected_after_next_round(self, client: TestClient):
+        """Reconnect tokens are rotated each round; old-round tokens must stop working."""
+        token = _register(client, "round_rotate@example.com", "RoundRotate")
+        with client.websocket_connect("/ws") as ws:
+            _ws_auth(ws, token)
+            ws.send_json({"type": "ROOM_CREATE", "data": {}})
+            _consume_until(ws, "ROOM_STATE")
+            ws.send_json({"type": "ROOM_START", "data": {}})
+            first_token_msg = _consume_until(ws, "RECONNECT_TOKEN", max_msgs=30)
+            old_token = first_token_msg["data"]["token"]
+
+            for _ in range(9):
+                _play_remote_turn(ws)
+
+            _consume_until(ws, "PHASE_SELECTING")
+            hand_msg = _consume_until(ws, "PRIVATE_HAND_STATE")
+            ws.send_json(
+                {
+                    "type": "CARD_SELECT",
+                    "data": {"card_number": hand_msg["data"]["hand"][0]["number"]},
+                }
+            )
+            _consume_until(ws, "PRIVATE_HAND_STATE")
+            _consume_until(ws, "TURN_RESOLVED")
+            _consume_until(ws, "ROUND_RESULT")
+
+            ws.send_json({"type": "ROUND_READY", "data": {}})
+            new_token_msg = _consume_until(ws, "RECONNECT_TOKEN", max_msgs=30)
+            assert new_token_msg["data"]["token"] != old_token
+
+        with client.websocket_connect("/ws") as ws2:
+            ws2.send_json({"type": "WS_HELLO", "data": {}})
+            ws2.receive_json()
+            ws2.send_json({"type": "RECONNECT", "data": {"token": old_token}})
+            err = _consume_until(ws2, "ERROR", max_msgs=10)
+            assert err["data"]["code"] == "INVALID_RECONNECT_TOKEN"
+
 
 # ---------------------------------------------------------------------------
 # TestBotTakeover
@@ -454,6 +530,31 @@ class TestBotTakeover:
         assert match.seats[0].is_disconnected is True
         assert before <= match.seats[0].disconnected_at <= after
         assert match.seats[0].connection_id is None
+
+    def test_guest_disconnect_is_immediate_bot_takeover(
+        self,
+        client: TestClient,
+        match_service: MatchService,
+        room_service: RoomService,
+    ):
+        """Guests cannot reconnect, so their seat is converted to BOT on disconnect."""
+        token = _guest_token(client, "GuestTakeover")
+        room_code = None
+        with client.websocket_connect("/ws") as ws:
+            _ws_auth_guest(ws, token)
+            ws.send_json({"type": "ROOM_CREATE", "data": {}})
+            room_msg = _consume_until(ws, "ROOM_STATE")
+            room_code = room_msg["data"]["room_code"]
+            ws.send_json({"type": "ROOM_START", "data": {}})
+            _consume_until(ws, "MATCH_START")
+
+        assert room_code is not None
+        match = match_service.get_match_by_room(room_code)
+        assert match is not None
+        assert match.seats[0].took_over_by_bot is True
+        room = room_service.repo.get(room_code)
+        assert room is not None
+        assert room.participants[0].controller_type == SeatControllerType.BOT
 
 
 # ---------------------------------------------------------------------------

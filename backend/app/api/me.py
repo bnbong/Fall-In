@@ -11,8 +11,16 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.dependencies import get_current_user, require_registered
 from app.models.db import User
-from app.repositories import collection_repo
+from app.repositories import collection_repo, profile_repo
 from app.schemas.profile import CollectionEntry, CollectionResponse, ProfileResponse
+from app.schemas.progress import (
+    CollectionUnlockRequest,
+    CollectionUnlockResponse,
+    CurrencyUpdateRequest,
+    CurrencyUpdateResponse,
+    ProgressMergeRequest,
+    ProgressMergeResponse,
+)
 
 router = APIRouter(prefix="/me", tags=["me"])
 
@@ -58,3 +66,82 @@ def get_collection(
         for row in rows
     ]
     return CollectionResponse(items=items, total=len(items))
+
+
+@router.post("/progress/merge", response_model=ProgressMergeResponse)
+def merge_progress(
+    req: ProgressMergeRequest,
+    user: User = Depends(require_registered),
+    db: Session = Depends(get_db),
+) -> ProgressMergeResponse:
+    """
+    Merge local single-player progress into the registered server account.
+
+    Merge strategy is intentionally conservative for beta:
+      - currency keeps the larger of {server, local}
+      - collection becomes the union of {server, local}
+
+    This protects the common "old local save + new online account" case
+    without forcing the client to reconcile multiple sources first.
+    """
+    current_rows = collection_repo.get_for_user(db, user.id)
+    current_ids = {row.soldier_id for row in current_rows}
+    merged_ids = current_ids | set(req.collected_soldier_ids)
+
+    for soldier_id in sorted(merged_ids - current_ids):
+        collection_repo.add_soldier(
+            db,
+            user.id,
+            soldier_id,
+            source="client_merge",
+        )
+
+    merged_currency = max(user.profile.currency, req.currency)
+    if user.profile.currency != merged_currency:
+        profile_repo.set_currency(db, user.profile, merged_currency)
+
+    return ProgressMergeResponse(
+        currency=merged_currency,
+        collected_soldier_ids=sorted(merged_ids),
+        total_collected=len(merged_ids),
+    )
+
+
+@router.put("/currency", response_model=CurrencyUpdateResponse)
+def update_currency(
+    req: CurrencyUpdateRequest,
+    user: User = Depends(require_registered),
+    db: Session = Depends(get_db),
+) -> CurrencyUpdateResponse:
+    """
+    Persist the exact wallet amount for the authenticated registered user.
+    """
+    profile_repo.set_currency(db, user.profile, req.currency)
+    return CurrencyUpdateResponse(currency=req.currency)
+
+
+@router.post("/collection/unlock", response_model=CollectionUnlockResponse)
+def unlock_collection_entry(
+    req: CollectionUnlockRequest,
+    user: User = Depends(require_registered),
+    db: Session = Depends(get_db),
+) -> CollectionUnlockResponse:
+    """
+    Idempotently unlock a collected soldier for the authenticated user.
+    """
+    added = False
+    if not collection_repo.has_soldier(db, user.id, req.soldier_id):
+        collection_repo.add_soldier(
+            db,
+            user.id,
+            req.soldier_id,
+            source="client_unlock",
+        )
+        added = True
+
+    total = len(collection_repo.get_for_user(db, user.id))
+    return CollectionUnlockResponse(
+        soldier_id=req.soldier_id,
+        added=added,
+        total_collected=total,
+    )

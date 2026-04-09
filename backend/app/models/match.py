@@ -60,6 +60,7 @@ class TurnStep:
     penalty_score: int
     had_to_take_row: bool
     order: int  # 1-based placement order
+    penalty_card_count: int = 0  # number of penalty cards taken in this placement
 
 
 @dataclass
@@ -99,3 +100,13 @@ class ActiveMatch:
     # Determines whether MMR updates are applied after the game ends.
     # Custom-room matches always have is_ranked=False.
     is_ranked: bool = False
+
+    # Round-settlement coordination (client result screen before continuing).
+    round_settlement_pending: bool = False
+    round_settlement_ready_seats: set[int] = field(default_factory=set)
+    round_summary_pending: Optional[RoundSummary] = None
+
+    # Seats that voluntarily left mid-match (MATCH_LEAVE).
+    # They are converted to bot immediately but marked as eliminated
+    # at the end of the current round in finalize_round().
+    voluntarily_left_seats: set[int] = field(default_factory=set)

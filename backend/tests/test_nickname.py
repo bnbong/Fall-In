@@ -19,7 +19,6 @@ import pytest
 
 from app.services.nickname_service import NicknameError, validate_nickname
 
-
 # ===========================================================================
 # Unit tests — validate_nickname
 # ===========================================================================

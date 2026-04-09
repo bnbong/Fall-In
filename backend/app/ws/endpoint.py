@@ -27,8 +27,6 @@ import uuid
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session
 
-logger = logging.getLogger("fall_in.ws")
-
 from app.config import settings
 from app.database import get_db
 from app.models.room import SeatControllerType
@@ -43,6 +41,8 @@ from app.ws.handler import _execute_turn, handle_message
 from app.ws.presence import PresenceManager
 from app.ws.presence import presence_manager as _default_presence_manager
 from app.ws.session import WsSession
+
+logger = logging.getLogger("fall_in.ws")
 
 router = APIRouter()
 
@@ -168,7 +168,6 @@ async def websocket_endpoint(
                     and seat.controller_type == SeatControllerType.REMOTE
                     and not seat.took_over_by_bot
                 ):
-                    # In-match disconnect: preserve state, start grace timer.
                     match_service.mark_seat_disconnected(active_match, session.seat_index)
                     await manager.broadcast_to_room(
                         session.room_code,
@@ -181,16 +180,42 @@ async def websocket_endpoint(
                     async def _on_turn_ready(rc: str, m) -> None:
                         await _execute_turn(rc, m, manager, match_service, presence_manager)
 
-                    presence_manager.start_grace_timer(
-                        match_id=active_match.match_id,
-                        seat_index=session.seat_index,
-                        match=active_match,
-                        match_service=match_service,
-                        room_service=room_service,
-                        manager=manager,
-                        room_code=session.room_code,
-                        on_turn_ready=_on_turn_ready,
-                    )
+                    if seat.account_type != "registered":
+                        # Guests cannot reconnect; convert immediately.
+                        # Mark for elimination at round end.
+                        if not seat.player.is_eliminated:
+                            active_match.voluntarily_left_seats.add(session.seat_index)
+                        presence_manager.revoke_seat_token(
+                            active_match.match_id,
+                            session.seat_index,
+                        )
+                        match_service.takeover_seat(active_match, session.seat_index)
+                        room_service.mark_participant_bot_takeover(
+                            session.room_code,
+                            session.seat_index,
+                        )
+                        await manager.broadcast_to_room(
+                            session.room_code,
+                            {
+                                "type": "SEAT_BOT_TAKEOVER",
+                                "data": {"seat_index": session.seat_index},
+                            },
+                        )
+                        presence_manager.cancel_selection_timeout(active_match.match_id)
+                        if match_service.all_selected(active_match):
+                            await _on_turn_ready(session.room_code, active_match)
+                    else:
+                        # Registered users may reconnect during the same round.
+                        presence_manager.start_grace_timer(
+                            match_id=active_match.match_id,
+                            seat_index=session.seat_index,
+                            match=active_match,
+                            match_service=match_service,
+                            room_service=room_service,
+                            manager=manager,
+                            room_code=session.room_code,
+                            on_turn_ready=_on_turn_ready,
+                        )
             else:
                 # In-lobby disconnect: leave room normally.
                 updated = room_service.leave_room(session.room_code, session.seat_index)

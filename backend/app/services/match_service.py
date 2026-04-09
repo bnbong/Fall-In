@@ -79,14 +79,7 @@ class MatchService:
 
             ai_ctrl: Optional[AIPlayer] = AIPlayer(player) if is_bot else None
 
-            # Derive account_type from the seat's identity:
-            # bots are "bot"; registered users have a user_id; guests do not.
-            if is_bot:
-                account_type = "bot"
-            elif participant.user_id is not None:
-                account_type = "registered"
-            else:
-                account_type = "guest"
+            account_type = participant.account_type if not is_bot else "bot"
 
             seats[seat_idx] = MatchSeat(
                 seat_index=seat_idx,
@@ -145,6 +138,47 @@ class MatchService:
     def start_next_round(self, match: ActiveMatch) -> None:
         """Start the next round (used after ROUND_RESULT is broadcast)."""
         self._start_round(match)
+
+    def begin_round_settlement(self, match: ActiveMatch, summary: RoundSummary) -> None:
+        """Mark the match as waiting on the round-settlement screen."""
+        match.round_settlement_pending = True
+        match.round_settlement_ready_seats.clear()
+        match.round_summary_pending = summary
+
+    def has_round_settlement_pending(self, match: ActiveMatch) -> bool:
+        return match.round_settlement_pending and match.round_summary_pending is not None
+
+    def mark_round_ready(self, match: ActiveMatch, seat_index: int) -> bool:
+        """
+        Record one human seat's acknowledgement of the round-settlement screen.
+
+        Returns True once every human seat still controlled by a REMOTE player
+        has acknowledged.
+        """
+        if not self.has_round_settlement_pending(match):
+            raise MatchError("Round settlement is not active")
+
+        seat = match.seats.get(seat_index)
+        if seat is None:
+            raise MatchError(f"Seat {seat_index} not found in match")
+        if seat.controller_type != SeatControllerType.REMOTE:
+            raise MatchError("Only human (REMOTE) seats can acknowledge settlement")
+
+        match.round_settlement_ready_seats.add(seat_index)
+        required = {
+            s.seat_index
+            for s in match.seats.values()
+            if s.controller_type == SeatControllerType.REMOTE and not s.player.is_eliminated  # type: ignore[union-attr]
+        }
+        return required.issubset(match.round_settlement_ready_seats)
+
+    def clear_round_settlement(self, match: ActiveMatch) -> Optional[RoundSummary]:
+        """Clear the active round-settlement state and return its summary."""
+        summary = match.round_summary_pending
+        match.round_settlement_pending = False
+        match.round_settlement_ready_seats.clear()
+        match.round_summary_pending = None
+        return summary
 
     def reselect_bots(self, match: ActiveMatch) -> None:
         """
@@ -287,6 +321,7 @@ class MatchService:
                 penalty_score=placement.penalty_score,
                 had_to_take_row=placement.had_to_take_row,
                 order=order_idx + 1,
+                penalty_card_count=len(placement.penalty_cards),
             )
             accumulated.append(step)
             # Temporarily set last_turn_steps so build_public_state reflects
@@ -307,11 +342,35 @@ class MatchService:
         Commit round scores and determine if the game is over.
 
         Must be called after resolve_turn() confirms is_round_over().
+        Players who voluntarily left mid-match are force-eliminated here.
         """
         rules: GameRules = match.rules  # type: ignore[assignment]
 
+        # Force-eliminate players who left voluntarily during this round.
+        for seat_idx in match.voluntarily_left_seats:
+            seat = match.seats.get(seat_idx)
+            if seat is not None and not seat.player.is_eliminated:  # type: ignore[union-attr]
+                seat.player.is_eliminated = True  # type: ignore[union-attr]
+        match.voluntarily_left_seats.clear()
+
+        # Sole-survivor check: if only one active player remains after
+        # voluntary eliminations, declare them the winner immediately
+        # — their score doesn't matter (they outlasted everyone else).
+        active_before_commit = [p for p in rules.players if not p.is_eliminated]
+        sole_survivor_win = len(active_before_commit) == 1
+
         # {player_id: (round_danger, new_total)}
         score_results = rules.commit_round_scores()
+
+        # Override game-end result for the sole-survivor case: the last
+        # remaining player wins even if commit_round_scores() would have
+        # eliminated them for exceeding 66 danger.
+        if sole_survivor_win:
+            survivor = active_before_commit[0]
+            rules.game_over = True
+            rules.winner = survivor
+            # Undo the elimination that commit_round_scores may have set.
+            survivor.is_eliminated = False
 
         round_danger: dict[int, int] = {}
         total_scores: dict[int, int] = {}
@@ -438,6 +497,7 @@ class MatchService:
             seat_index=seat_index,
             hand=hand,
             has_selected=seat.player.selected_card is not None,  # type: ignore[union-attr]
+            is_eliminated=seat.player.is_eliminated,  # type: ignore[union-attr]
         )
 
     # ------------------------------------------------------------------

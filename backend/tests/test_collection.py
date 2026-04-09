@@ -222,3 +222,85 @@ class TestGuestCollectionRestrictions:
     def test_unauthenticated_collection_rejected(self, client):
         resp = client.get("/me/collection")
         assert resp.status_code in (401, 403)  # HTTPBearer rejects missing credentials
+
+
+# ---------------------------------------------------------------------------
+# Progress sync endpoints
+# ---------------------------------------------------------------------------
+
+
+class TestProgressSync:
+    def test_merge_progress_uses_max_currency_and_union_collection(self, client, db: Session):
+        from app.repositories import collection_repo, profile_repo
+
+        token = _register_and_get_token(client, "merge@example.com", nickname="MergePlayer")
+        profile = client.get("/me/profile", headers=_auth(token)).json()
+        user_id = profile["user_id"]
+
+        from app.models.db import User
+
+        row = db.query(User).filter(User.id == user_id).first()
+        collection_repo.add_soldier(db, user_id, 11, source="server")
+        profile_repo.set_currency(db, row.profile, 120)
+
+        resp = client.post(
+            "/me/progress/merge",
+            headers=_auth(token),
+            json={"currency": 180, "collected_soldier_ids": [11, 42, 77]},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["currency"] == 180
+        assert data["collected_soldier_ids"] == [11, 42, 77]
+        assert data["total_collected"] == 3
+
+    def test_currency_update_persists_exact_wallet_amount(self, client):
+        token = _register_and_get_token(client, "currency@example.com", nickname="Wallet")
+        resp = client.put("/me/currency", headers=_auth(token), json={"currency": 35})
+        assert resp.status_code == 200
+        assert resp.json()["currency"] == 35
+
+        profile = client.get("/me/profile", headers=_auth(token))
+        assert profile.status_code == 200
+        assert profile.json()["currency"] == 35
+
+    def test_collection_unlock_is_idempotent(self, client):
+        token = _register_and_get_token(client, "unlock@example.com", nickname="Unlocker")
+
+        first = client.post(
+            "/me/collection/unlock",
+            headers=_auth(token),
+            json={"soldier_id": 22},
+        )
+        second = client.post(
+            "/me/collection/unlock",
+            headers=_auth(token),
+            json={"soldier_id": 22},
+        )
+
+        assert first.status_code == 200
+        assert first.json()["added"] is True
+        assert first.json()["total_collected"] == 1
+
+        assert second.status_code == 200
+        assert second.json()["added"] is False
+        assert second.json()["total_collected"] == 1
+
+    def test_guest_cannot_write_progress(self, client):
+        token = _guest_token(client, "GuestSync")
+
+        merge = client.post(
+            "/me/progress/merge",
+            headers=_auth(token),
+            json={"currency": 50, "collected_soldier_ids": [7]},
+        )
+        update = client.put("/me/currency", headers=_auth(token), json={"currency": 50})
+        unlock = client.post(
+            "/me/collection/unlock",
+            headers=_auth(token),
+            json={"soldier_id": 7},
+        )
+
+        assert merge.status_code == 403
+        assert update.status_code == 403
+        assert unlock.status_code == 403

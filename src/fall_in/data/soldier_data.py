@@ -113,6 +113,13 @@ class SoldierDataManager:
         with open(save_path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
 
+    def replace_collected_state(self, collected_ids: set[int]) -> None:
+        """Replace the full collected snapshot and persist it."""
+        self.collected_ids = set(collected_ids)
+        for soldier in self.soldiers.values():
+            soldier.is_collected = soldier.id in self.collected_ids
+        self.save_collected_state()
+
     def get_soldier(self, soldier_id: int) -> Optional[SoldierInfo]:
         """Get soldier info by ID"""
         return self.soldiers.get(soldier_id)
@@ -123,6 +130,14 @@ class SoldierDataManager:
             self.soldiers[soldier_id].is_collected = True
             self.collected_ids.add(soldier_id)
             self.save_collected_state()
+            try:
+                from fall_in.core.game_manager import GameManager
+
+                game = GameManager()
+                game.collected_soldiers = set(self.collected_ids)
+                game.sync_registered_unlock_async(soldier_id)
+            except Exception:
+                pass
             return True
         return False
 

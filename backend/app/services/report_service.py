@@ -79,7 +79,7 @@ def submit_report(
     # Sanitise optional details.
     clean_details: Optional[str] = None
     if details:
-        clean_details = details.strip()[: _DETAILS_MAX_LEN]
+        clean_details = details.strip()[:_DETAILS_MAX_LEN]
         if not clean_details:
             clean_details = None
 

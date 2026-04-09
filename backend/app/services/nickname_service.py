@@ -37,9 +37,7 @@ _MAX_LEN = 20
 
 # Allowed: Korean syllables / jamo, ASCII letters, digits, underscore, space.
 # Spaces are allowed as word separators but not at start/end (stripped earlier).
-_ALLOWED_RE = re.compile(
-    r"^[가-힣ㄱ-ㅎㅏ-ㅣa-zA-Z0-9_ ]+$"
-)
+_ALLOWED_RE = re.compile(r"^[가-힣ㄱ-ㅎㅏ-ㅣa-zA-Z0-9_ ]+$")
 
 # Must contain at least one non-digit character so purely numeric names are blocked.
 _ALL_DIGITS_RE = re.compile(r"^\d+$")
@@ -94,9 +92,7 @@ def validate_nickname(raw: str) -> str:
         raise NicknameError(f"닉네임은 최대 {_MAX_LEN}자까지 허용됩니다.")
 
     if not _ALLOWED_RE.match(nick):
-        raise NicknameError(
-            "닉네임에는 한글, 영문, 숫자, 밑줄(_), 공백만 사용할 수 있습니다."
-        )
+        raise NicknameError("닉네임에는 한글, 영문, 숫자, 밑줄(_), 공백만 사용할 수 있습니다.")
 
     if _ALL_DIGITS_RE.match(nick):
         raise NicknameError("닉네임은 숫자만으로 구성될 수 없습니다.")

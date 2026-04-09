@@ -44,6 +44,7 @@ class Settings(BaseSettings):
     #   select a card before auto-playing with bot logic.
     RECONNECT_GRACE_SECONDS: int = 45
     CARD_SELECTION_TIMEOUT_SECONDS: int = 30
+    ROUND_SETTLEMENT_TIMEOUT_SECONDS: int = 8
 
     # Quick-match matchmaking (PR-06).
     # QUICK_MATCH_FILL_SECONDS: how long to wait for a full 4-player lobby

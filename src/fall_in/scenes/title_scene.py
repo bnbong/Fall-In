@@ -149,14 +149,11 @@ class TitleScene(Scene):
         return None
 
     def _on_start_game(self) -> None:
-        """Start game callback — goes through loading screen"""
+        """Start game callback — opens single/multi mode selection."""
         from fall_in.core.game_manager import GameManager
-        from fall_in.scenes.game_loading_scene import GameLoadingScene
+        from fall_in.scenes.game_mode_select_scene import GameModeSelectScene
 
-        game = GameManager()
-        # Capture current screen so title stays visible behind the closing door
-        prev_screen = game.screen.copy() if game.screen else None
-        game.change_scene(GameLoadingScene(prev_screen=prev_screen))
+        GameManager().change_scene(GameModeSelectScene())
 
     def _on_tutorial(self) -> None:
         """Tutorial callback - opens tutorial information"""
