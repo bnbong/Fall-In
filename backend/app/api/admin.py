@@ -17,6 +17,7 @@ PATCH /admin/reports/{id}   — update report status (reviewed / dismissed)
 
 from __future__ import annotations
 
+import secrets
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -44,7 +45,7 @@ def _require_admin(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Admin endpoints are disabled (ADMIN_TOKEN not set)",
         )
-    if credentials is None or credentials.credentials != token:
+    if credentials is None or not secrets.compare_digest(credentials.credentials, token):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or missing admin token",

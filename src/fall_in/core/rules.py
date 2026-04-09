@@ -322,10 +322,11 @@ class GameRules:
 
             if human_eliminated:
                 # Single-player: human lost — lowest-score AI wins.
+                human = self.players[self._human_seat]  # type-safe: human_eliminated guarantees _human_seat is not None
                 ai_players = [
                     p
                     for p in self.players
-                    if p is not self.players[self._human_seat] and not p.is_eliminated  # type: ignore[index]
+                    if p is not human and not p.is_eliminated
                 ]
                 if ai_players:
                     self.winner = min(ai_players, key=lambda p: p.penalty_score)

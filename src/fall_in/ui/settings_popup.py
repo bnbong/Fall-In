@@ -5,6 +5,7 @@ Can be used from any scene by composing it into the scene class.
 """
 
 import webbrowser
+from collections.abc import Callable
 
 import pygame
 
@@ -70,10 +71,10 @@ class SettingsPopup:
         )
 
         # Exit callback and eliminated state (set by owning scene)
-        self._exit_callback: object = None  # Callable[[], None] | None
+        self._exit_callback: Callable[[], None] | None = None
         self._is_eliminated = False
 
-    def set_exit_callback(self, callback) -> None:
+    def set_exit_callback(self, callback: Callable[[], None]) -> None:
         """Set the callback invoked when the user confirms exit."""
         self._exit_callback = callback
 

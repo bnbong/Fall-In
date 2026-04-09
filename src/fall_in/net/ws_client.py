@@ -214,6 +214,8 @@ class WsClient:
                     msg = json.loads(raw)
                     msg_type = msg.get("type", "")
                     data = msg.get("data") or {}
+                    if not isinstance(data, dict):
+                        data = {}
                     self._recv_queue.put((msg_type, data))
                 except Exception as e:
                     logger.warning("ws_client_parse_error", extra={"error": str(e)})

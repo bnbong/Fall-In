@@ -66,3 +66,24 @@ def add_soldier(
     db.commit()
     db.refresh(entry)
     return entry
+
+
+def add_soldiers_batch(
+    db: Session,
+    user_id: str,
+    soldier_ids: list[int],
+    source: str = "client_merge",
+) -> int:
+    """Add multiple soldiers in a single transaction. Returns count added."""
+    now = _utcnow()
+    for sid in soldier_ids:
+        db.add(
+            UserCollection(
+                user_id=user_id,
+                soldier_id=sid,
+                source=source,
+                unlocked_at=now,
+            )
+        )
+    db.commit()
+    return len(soldier_ids)

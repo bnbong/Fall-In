@@ -91,13 +91,9 @@ def merge_progress(
     current_ids = {row.soldier_id for row in current_rows}
     merged_ids = current_ids | set(req.collected_soldier_ids)
 
-    for soldier_id in sorted(merged_ids - current_ids):
-        collection_repo.add_soldier(
-            db,
-            user.id,
-            soldier_id,
-            source="client_merge",
-        )
+    new_ids = sorted(merged_ids - current_ids)
+    if new_ids:
+        collection_repo.add_soldiers_batch(db, user.id, new_ids, source="client_merge")
 
     merged_currency = max(user.profile.currency, req.currency)
     if user.profile.currency != merged_currency:
