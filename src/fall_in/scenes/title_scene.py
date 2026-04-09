@@ -267,7 +267,6 @@ class TitleScene(Scene):
         if not DEBUG_MODE or GameManager().has_auth_session():
             return
 
-        from fall_in.core.game_manager import GameManager
         from fall_in.scenes.title_debug_scene import DebugScene
 
         GameManager().change_scene(DebugScene())

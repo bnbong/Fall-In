@@ -42,6 +42,7 @@ class ClientMessageType(str, Enum):
 
     # Connection management
     PING = "PING"
+    PONG = "PONG"
     RECONNECT = "RECONNECT"
 
 

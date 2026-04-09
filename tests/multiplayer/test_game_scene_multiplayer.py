@@ -303,10 +303,11 @@ def test_remote_match_result_transitions_to_game_over_scene(monkeypatch):
     import fall_in.scenes.game_over_scene as game_over_module
 
     class _FakeGameOverScene:
-        def __init__(self, winner, players, round_number):
+        def __init__(self, winner, players, round_number, multiplayer_reward=None):
             self.winner = winner
             self.players = players
             self.round_number = round_number
+            self.multiplayer_reward = multiplayer_reward
 
     monkeypatch.setattr(game_over_module, "GameOverScene", _FakeGameOverScene)
     monkeypatch.setattr(

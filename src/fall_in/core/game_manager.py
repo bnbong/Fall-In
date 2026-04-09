@@ -278,6 +278,7 @@ class GameManager:
 
         from fall_in.net.backend_api import get_json, post_json
 
+        profile: dict = {}
         if self.has_registered_session() and sync_local_progress:
             merged = post_json(
                 "/me/progress/merge",
@@ -300,7 +301,8 @@ class GameManager:
                 ],
             )
 
-        profile = get_json("/me/profile", self.access_token)
+        if not profile:
+            profile = get_json("/me/profile", self.access_token)
         self.user_id = profile.get("user_id")
         self.nickname = profile.get("nickname", self.nickname)
         self.account_type = profile.get("account_type", self.account_type)

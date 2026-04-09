@@ -75,6 +75,7 @@ def downgrade() -> None:
     op.drop_index("ix_reports_reported_user_id", "reports")
     op.drop_index("ix_reports_reporter_user_id", "reports")
     op.drop_table("reports")
-    # Drop enum types (PostgreSQL only; SQLite ignores)
-    op.execute("DROP TYPE IF EXISTS reportreasoncode")
-    op.execute("DROP TYPE IF EXISTS reportstatus")
+    # Drop enum types (PostgreSQL only; SQLite has no user-defined types).
+    if op.get_bind().dialect.name == "postgresql":
+        op.execute("DROP TYPE IF EXISTS reportreasoncode")
+        op.execute("DROP TYPE IF EXISTS reportstatus")
