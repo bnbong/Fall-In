@@ -60,8 +60,12 @@ class RoomLobbyScene(Scene):
         self._match_starting = False
 
         cx = SCREEN_WIDTH // 2
-        self._btn_ready = Button(cx - 110, SCREEN_HEIGHT - 130, 220, 50, "준비", self._on_ready)
-        self._btn_start = Button(cx - 110, SCREEN_HEIGHT - 70, 220, 50, "게임 시작", self._on_start)
+        self._btn_ready = Button(
+            cx - 110, SCREEN_HEIGHT - 130, 220, 50, "준비", self._on_ready
+        )
+        self._btn_start = Button(
+            cx - 110, SCREEN_HEIGHT - 70, 220, 50, "게임 시작", self._on_start
+        )
         self._btn_leave = Button(20, 20, 100, 40, "← 나가기", self._on_leave)
 
         self._is_ready = False
@@ -85,9 +89,7 @@ class RoomLobbyScene(Scene):
                 break
         # Server key is "host_seat_index", not "owner_seat_index"
         host_seat = data.get("host_seat_index")
-        self._am_owner = (
-            self._my_seat is not None and self._my_seat == host_seat
-        )
+        self._am_owner = self._my_seat is not None and self._my_seat == host_seat
         self._btn_ready.text = "준비 취소" if self._is_ready else "준비"
 
     # ------------------------------------------------------------------
@@ -211,10 +213,16 @@ class RoomLobbyScene(Scene):
         # Info / error messages
         if self._info_msg:
             info_surf = get_font(18).render(self._info_msg, True, (30, 130, 30))
-            screen.blit(info_surf, info_surf.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT - 175)))
+            screen.blit(
+                info_surf,
+                info_surf.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT - 175)),
+            )
         if self._error_msg:
             err_surf = get_font(16).render(self._error_msg, True, (180, 40, 40))
-            screen.blit(err_surf, err_surf.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT - 155)))
+            screen.blit(
+                err_surf,
+                err_surf.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT - 155)),
+            )
 
         # Buttons
         self._btn_leave.render(screen)
@@ -223,8 +231,12 @@ class RoomLobbyScene(Scene):
             self._btn_start.render(screen)
         elif not self._am_owner:
             # Non-owner: show hint that only owner can start
-            hint = get_font(14).render("방장이 게임을 시작하면 자동으로 입장됩니다.", True, (120, 120, 140))
-            screen.blit(hint, hint.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT - 55)))
+            hint = get_font(14).render(
+                "방장이 게임을 시작하면 자동으로 입장됩니다.", True, (120, 120, 140)
+            )
+            screen.blit(
+                hint, hint.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT - 55))
+            )
 
         # Waiting / starting overlay
         if self._match_starting:
@@ -233,7 +245,9 @@ class RoomLobbyScene(Scene):
             screen.blit(overlay, (0, 0))
             dots = "." * (int(pygame.time.get_ticks() / 400) % 4)
             msg = get_font(30).render(f"게임 시작 중{dots}", True, WHITE)
-            screen.blit(msg, msg.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2)))
+            screen.blit(
+                msg, msg.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2))
+            )
 
     def _render_seats(self, screen: pygame.Surface) -> None:
         # Build a seat_index → participant dict from "participants" list
@@ -264,7 +278,13 @@ class RoomLobbyScene(Scene):
             else:
                 is_ready = seat.get("is_ready", False)
                 is_me = seat.get("display_name") == self._my_display_name
-                bg = (220, 245, 220) if is_ready else (230, 240, 255) if is_me else (240, 240, 252)
+                bg = (
+                    (220, 245, 220)
+                    if is_ready
+                    else (230, 240, 255)
+                    if is_me
+                    else (240, 240, 252)
+                )
                 border_color = (60, 180, 60) if is_ready else LIGHT_BLUE
                 pygame.draw.rect(screen, bg, rect, border_radius=10)
                 pygame.draw.rect(screen, border_color, rect, 2, border_radius=10)
@@ -281,4 +301,6 @@ class RoomLobbyScene(Scene):
 
                 if slot == host_seat:
                     crown = font_small.render("♛ 방장", True, (190, 140, 20))
-                    screen.blit(crown, (rect.right - crown.get_width() - 12, rect.y + 12))
+                    screen.blit(
+                        crown, (rect.right - crown.get_width() - 12, rect.y + 12)
+                    )

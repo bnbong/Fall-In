@@ -93,7 +93,9 @@ class _TextInput:
 
         clip_rect = self.rect.inflate(-16, -8)
         screen.set_clip(clip_rect)
-        screen.blit(surf, (self.rect.x + 10, self.rect.centery - surf.get_height() // 2))
+        screen.blit(
+            surf, (self.rect.x + 10, self.rect.centery - surf.get_height() // 2)
+        )
         screen.set_clip(None)
 
         if self.focused and self._cursor_visible and self.text:
@@ -122,18 +124,34 @@ class AccountGateScene(Scene):
 
         # Hint text sits at y=280, first input at y=305.
         self._login_email = _TextInput(cx - input_w // 2, 305, input_w, 44, "이메일")
-        self._login_pw = _TextInput(cx - input_w // 2, 360, input_w, 44, "비밀번호", password=True)
-        self._reg_nick = _TextInput(cx - input_w // 2, 305, input_w, 44, "닉네임 (2~20자)")
+        self._login_pw = _TextInput(
+            cx - input_w // 2, 360, input_w, 44, "비밀번호", password=True
+        )
+        self._reg_nick = _TextInput(
+            cx - input_w // 2, 305, input_w, 44, "닉네임 (2~20자)"
+        )
         self._reg_email = _TextInput(cx - input_w // 2, 358, input_w, 44, "이메일")
-        self._reg_pw = _TextInput(cx - input_w // 2, 411, input_w, 44, "비밀번호", password=True)
-        self._guest_nick = _TextInput(cx - input_w // 2, 305, input_w, 44, "닉네임 (2~20자)")
+        self._reg_pw = _TextInput(
+            cx - input_w // 2, 411, input_w, 44, "비밀번호", password=True
+        )
+        self._guest_nick = _TextInput(
+            cx - input_w // 2, 305, input_w, 44, "닉네임 (2~20자)"
+        )
 
         self._auth_tab = "guest"
-        self._btn_tab_login = Button(cx - 175, 225, 110, 40, "로그인", self._on_tab_login)
-        self._btn_tab_register = Button(cx - 55, 225, 110, 40, "회원가입", self._on_tab_register)
-        self._btn_tab_guest = Button(cx + 65, 225, 110, 40, "게스트", self._on_tab_guest)
+        self._btn_tab_login = Button(
+            cx - 175, 225, 110, 40, "로그인", self._on_tab_login
+        )
+        self._btn_tab_register = Button(
+            cx - 55, 225, 110, 40, "회원가입", self._on_tab_register
+        )
+        self._btn_tab_guest = Button(
+            cx + 65, 225, 110, 40, "게스트", self._on_tab_guest
+        )
         # Submit button position varies by tab — set dynamically in render.
-        self._btn_auth_submit = Button(cx - 100, 420, 200, 44, "계속", self._on_auth_submit)
+        self._btn_auth_submit = Button(
+            cx - 100, 420, 200, 44, "계속", self._on_auth_submit
+        )
 
     def _on_tab_login(self) -> None:
         self._auth_tab = "login"
@@ -158,7 +176,9 @@ class AccountGateScene(Scene):
                 self._error_msg = "닉네임을 입력하세요."
                 return
             self._state = _State.AUTH_REST
-            threading.Thread(target=self._do_auth_guest, args=(nick,), daemon=True).start()
+            threading.Thread(
+                target=self._do_auth_guest, args=(nick,), daemon=True
+            ).start()
             return
 
         if self._auth_tab == "login":
@@ -168,7 +188,9 @@ class AccountGateScene(Scene):
                 self._error_msg = "이메일과 비밀번호를 입력하세요."
                 return
             self._state = _State.AUTH_REST
-            threading.Thread(target=self._do_auth_login, args=(email, pw), daemon=True).start()
+            threading.Thread(
+                target=self._do_auth_login, args=(email, pw), daemon=True
+            ).start()
             return
 
         nick = self._reg_nick.text.strip()
@@ -193,7 +215,9 @@ class AccountGateScene(Scene):
             refresh_token=response.get("refresh_token"),
             account_type=response.get("account_type", "guest"),
         )
-        game.bootstrap_authenticated_account(sync_local_progress=game.account_type == "registered")
+        game.bootstrap_authenticated_account(
+            sync_local_progress=game.account_type == "registered"
+        )
         self._auth_done = True
 
     def _do_auth_guest(self, nickname: str) -> None:
@@ -208,7 +232,9 @@ class AccountGateScene(Scene):
         try:
             from fall_in.net.backend_api import post_json
 
-            self._finish_auth(post_json("/auth/login", {"email": email, "password": password}))
+            self._finish_auth(
+                post_json("/auth/login", {"email": email, "password": password})
+            )
         except Exception as exc:
             self._auth_error = str(exc)
 
@@ -294,7 +320,9 @@ class AccountGateScene(Scene):
         else:
             dots = "." * (int(self._spinner_timer * 3) % 4)
             msg = sub_font.render(f"계정 동기화 중{dots}", True, AIR_FORCE_BLUE)
-            screen.blit(msg, msg.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2)))
+            screen.blit(
+                msg, msg.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2))
+            )
 
         if self._error_msg:
             err_surf = get_font(16).render(self._error_msg, True, (180, 40, 40))
@@ -332,14 +360,18 @@ class AccountGateScene(Scene):
             self._login_pw.render(screen)
             self._btn_auth_submit.rect.y = 420
         elif self._auth_tab == "register":
-            hint = lbl_font.render("새 계정을 만들고 진행도를 서버와 연결", True, AIR_FORCE_BLUE)
+            hint = lbl_font.render(
+                "새 계정을 만들고 진행도를 서버와 연결", True, AIR_FORCE_BLUE
+            )
             screen.blit(hint, hint.get_rect(center=(cx, 280)))
             self._reg_nick.render(screen)
             self._reg_email.render(screen)
             self._reg_pw.render(screen)
             self._btn_auth_submit.rect.y = 470
         else:
-            hint = lbl_font.render("게스트로 시작하며 로컬 진행도를 그대로 사용", True, AIR_FORCE_BLUE)
+            hint = lbl_font.render(
+                "게스트로 시작하며 로컬 진행도를 그대로 사용", True, AIR_FORCE_BLUE
+            )
             screen.blit(hint, hint.get_rect(center=(cx, 280)))
             self._guest_nick.render(screen)
             self._btn_auth_submit.rect.y = 370

@@ -70,7 +70,9 @@ class GameOverScene(Scene):
             self.is_victory = False
 
         # Check for coup ending
-        self.is_coup_ending = self._check_coup_ending() if not self.early_exit else False
+        self.is_coup_ending = (
+            self._check_coup_ending() if not self.early_exit else False
+        )
 
         # Calculate and apply rewards
         if self.early_exit:

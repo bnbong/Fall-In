@@ -113,7 +113,9 @@ def _make_private_state_dict() -> dict:
 
 def test_launch_game_uses_room_seat_when_match_start_has_no_my_seat(monkeypatch):
     ws = _FakeWs([("MATCH_START", {"match_id": "match-123"})])
-    scene = RoomLobbyScene(ws=ws, room_data=_make_room_data(), my_display_name="GuestTwo")
+    scene = RoomLobbyScene(
+        ws=ws, room_data=_make_room_data(), my_display_name="GuestTwo"
+    )
 
     captured: dict[str, object] = {}
 
@@ -145,7 +147,9 @@ def test_match_start_preserves_initial_public_and_private_messages(monkeypatch):
             ("PRIVATE_HAND_STATE", _make_private_state_dict()),
         ]
     )
-    scene = RoomLobbyScene(ws=ws, room_data=_make_room_data(), my_display_name="GuestTwo")
+    scene = RoomLobbyScene(
+        ws=ws, room_data=_make_room_data(), my_display_name="GuestTwo"
+    )
 
     captured: dict[str, object] = {}
 
@@ -186,7 +190,9 @@ def test_network_tick_routes_round_and_match_results(monkeypatch):
             ("MATCH_RESULT", {"winner_seat": 1}),
         ]
     )
-    scene = RoomLobbyScene(ws=ws, room_data=_make_room_data(), my_display_name="GuestTwo")
+    scene = RoomLobbyScene(
+        ws=ws, room_data=_make_room_data(), my_display_name="GuestTwo"
+    )
 
     captured: dict[str, object] = {}
 
@@ -208,13 +214,18 @@ def test_network_tick_routes_round_and_match_results(monkeypatch):
     built_scene = captured["scene"].scene_builder()
     built_scene.network_tick_callback()
 
-    assert built_scene.remote_adapter.pop_round_result() == {"round_number": 1, "timeout_seconds": 8}
+    assert built_scene.remote_adapter.pop_round_result() == {
+        "round_number": 1,
+        "timeout_seconds": 8,
+    }
     assert built_scene.remote_adapter.pop_match_result() == {"winner_seat": 1}
 
 
 def test_scene_builder_wires_round_ready_callback(monkeypatch):
     ws = _FakeWs([("MATCH_START", {"match_id": "match-123"})])
-    scene = RoomLobbyScene(ws=ws, room_data=_make_room_data(), my_display_name="GuestTwo")
+    scene = RoomLobbyScene(
+        ws=ws, room_data=_make_room_data(), my_display_name="GuestTwo"
+    )
 
     captured: dict[str, object] = {}
 

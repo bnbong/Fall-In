@@ -123,9 +123,9 @@ class GameModeSelectScene(Scene):
             screen,
             "게임 방식 선택",
             font,
-            font.render("게임 방식 선택", True, AIR_FORCE_BLUE).get_rect(
-                center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 120)
-            ).topleft,
+            font.render("게임 방식 선택", True, AIR_FORCE_BLUE)
+            .get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 120))
+            .topleft,
             AIR_FORCE_BLUE,
             WHITE,
             outline_offset=2,

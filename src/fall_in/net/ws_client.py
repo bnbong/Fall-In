@@ -203,7 +203,9 @@ class WsClient:
         except Exception as e:
             self._connect_error = str(e)
             self._connect_event.set()
-            logger.warning("ws_client_connect_failed", extra={"url": self._url, "error": str(e)})
+            logger.warning(
+                "ws_client_connect_failed", extra={"url": self._url, "error": str(e)}
+            )
         finally:
             self._connected = False
 

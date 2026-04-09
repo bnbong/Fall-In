@@ -104,7 +104,12 @@ def test_remote_reveal_applies_one_snapshot_per_tick():
     selecting = _make_public_state()
     step_one = _make_public_state()
     step_two = _make_public_state()
-    step_one.board_rows = [[MatchCardPublic(number=10, danger=3, owner_seat=0)], [], [], []]
+    step_one.board_rows = [
+        [MatchCardPublic(number=10, danger=3, owner_seat=0)],
+        [],
+        [],
+        [],
+    ]
     step_two.board_rows = [
         [
             MatchCardPublic(number=10, danger=3, owner_seat=0),
@@ -130,8 +135,14 @@ def test_remote_reveal_applies_one_snapshot_per_tick():
     scene.message = ""
     scene.message_timer = 0.0
     scene.penalty_cards_animating = []
-    scene.penalty_tweens = type("FakeTweenGroup", (), {"update": lambda self, dt: True, "clear": lambda self: None})()
-    scene.commander = type("FakeCommander", (), {"say_penalty_taken": lambda self: None})()
+    scene.penalty_tweens = type(
+        "FakeTweenGroup",
+        (),
+        {"update": lambda self, dt: True, "clear": lambda self: None},
+    )()
+    scene.commander = type(
+        "FakeCommander", (), {"say_penalty_taken": lambda self: None}
+    )()
 
     GameScene._advance_remote_reveal(scene, 0.0)
     assert adapter.get_public_state() is step_one
@@ -321,7 +332,9 @@ def test_remote_match_result_transitions_to_game_over_scene(monkeypatch):
     assert changed is True
     assert isinstance(captured["scene"], _FakeGameOverScene)
     assert captured["scene"].winner.player_id == 0
-    assert any(player.player_type == PlayerType.HUMAN for player in captured["scene"].players)
+    assert any(
+        player.player_type == PlayerType.HUMAN for player in captured["scene"].players
+    )
 
 
 def test_other_player_panels_include_disconnect_status():

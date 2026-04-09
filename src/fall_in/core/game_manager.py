@@ -95,7 +95,9 @@ class GameManager:
             self.currency = 0
         try:
             pending = self.load_player_data().get("pending_match_reconnect")
-            self.pending_match_reconnect = pending if isinstance(pending, dict) else None
+            self.pending_match_reconnect = (
+                pending if isinstance(pending, dict) else None
+            )
         except Exception:
             self.pending_match_reconnect = None
         try:

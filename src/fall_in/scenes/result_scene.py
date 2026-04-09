@@ -146,7 +146,14 @@ class ResultScene(Scene):
         self.round_number = int(data.get("round_number", public.round_number))
         self.human_penalty_cards = []
         self.round_results = {
-            int(seat_index): (int(value), int(data.get("total_scores", {}).get(str(seat_index), data.get("total_scores", {}).get(seat_index, 0))))
+            int(seat_index): (
+                int(value),
+                int(
+                    data.get("total_scores", {}).get(
+                        str(seat_index), data.get("total_scores", {}).get(seat_index, 0)
+                    )
+                ),
+            )
             for seat_index, value in (data.get("round_danger") or {}).items()
         }
 
@@ -166,7 +173,9 @@ class ResultScene(Scene):
         for seat in sorted(public.seats, key=lambda item: item.seat_index):
             player = Player(
                 name="나" if seat.seat_index == my_seat else seat.display_name,
-                player_type=PlayerType.HUMAN if seat.seat_index == my_seat else PlayerType.AI,
+                player_type=PlayerType.HUMAN
+                if seat.seat_index == my_seat
+                else PlayerType.AI,
                 player_id=seat.seat_index,
             )
             _, total = self.round_results.get(seat.seat_index, (0, 0))
@@ -344,7 +353,9 @@ class ResultScene(Scene):
         if self._remote_timeout_remaining <= 0.0 and not self._remote_acknowledged:
             self._confirm_remote_continue()
 
-        pop_match_result = getattr(self._remote_context.remote_adapter, "pop_match_result", None)
+        pop_match_result = getattr(
+            self._remote_context.remote_adapter, "pop_match_result", None
+        )
         if callable(pop_match_result):
             match_result = pop_match_result()
             if match_result is not None:
@@ -359,7 +370,9 @@ class ResultScene(Scene):
         if callable(consume_selecting):
             remaining = consume_selecting()
             if remaining is not None:
-                self._remote_context.resume_scene._reset_remote_selecting_phase(remaining)
+                self._remote_context.resume_scene._reset_remote_selecting_phase(
+                    remaining
+                )
                 from fall_in.core.audio_manager import AudioManager
                 from fall_in.core.game_manager import GameManager, GameState
                 from fall_in.config import GAME_BGM_PATH
@@ -540,5 +553,7 @@ class ResultScene(Scene):
             countdown_surf = info_font.render(countdown_label, True, WHITE)
             screen.blit(
                 countdown_surf,
-                countdown_surf.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT - 120)),
+                countdown_surf.get_rect(
+                    center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT - 120)
+                ),
             )

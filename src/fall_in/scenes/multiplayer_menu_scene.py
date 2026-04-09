@@ -60,8 +60,8 @@ class _State(Enum):
     CONNECTING = auto()
     RECONNECT_WAIT = auto()
     AUTH = auto()
-    AUTH_REST = auto()    # REST token request in-flight
-    AUTH_WS_WAIT = auto() # JWT sent over WS, awaiting AUTH_OK
+    AUTH_REST = auto()  # REST token request in-flight
+    AUTH_WS_WAIT = auto()  # JWT sent over WS, awaiting AUTH_OK
     MODE_SELECT = auto()
     QM_QUEUE = auto()
     ROOM_CREATE_WAIT = auto()
@@ -139,7 +139,9 @@ class _TextInput:
 
         clip_rect = self.rect.inflate(-16, -8)
         screen.set_clip(clip_rect)
-        screen.blit(surf, (self.rect.x + 10, self.rect.centery - surf.get_height() // 2))
+        screen.blit(
+            surf, (self.rect.x + 10, self.rect.centery - surf.get_height() // 2)
+        )
         screen.set_clip(None)
 
         if self.focused and self._cursor_visible and self.text:
@@ -229,15 +231,25 @@ class MultiplayerMenuScene(Scene):
         cx = SCREEN_WIDTH // 2
         # Login tab
         self._login_email = _TextInput(cx - input_w // 2, 295, input_w, 44, "이메일")
-        self._login_pw = _TextInput(cx - input_w // 2, 355, input_w, 44, "비밀번호", password=True)
+        self._login_pw = _TextInput(
+            cx - input_w // 2, 355, input_w, 44, "비밀번호", password=True
+        )
         # Register tab (nick on top)
-        self._reg_nick = _TextInput(cx - input_w // 2, 285, input_w, 44, "닉네임 (2~20자)")
+        self._reg_nick = _TextInput(
+            cx - input_w // 2, 285, input_w, 44, "닉네임 (2~20자)"
+        )
         self._reg_email = _TextInput(cx - input_w // 2, 340, input_w, 44, "이메일")
-        self._reg_pw = _TextInput(cx - input_w // 2, 395, input_w, 44, "비밀번호", password=True)
+        self._reg_pw = _TextInput(
+            cx - input_w // 2, 395, input_w, 44, "비밀번호", password=True
+        )
         # Guest tab
-        self._guest_nick = _TextInput(cx - input_w // 2, 350, input_w, 44, "닉네임 (2~20자)")
+        self._guest_nick = _TextInput(
+            cx - input_w // 2, 350, input_w, 44, "닉네임 (2~20자)"
+        )
 
-        self._room_code_input = _TextInput(cx - input_w // 2, 280, input_w, 44, "방 코드 (예: ABCD12)")
+        self._room_code_input = _TextInput(
+            cx - input_w // 2, 280, input_w, 44, "방 코드 (예: ABCD12)"
+        )
 
         # Quick-match seat index (set by MATCH_FOUND, consumed by MATCH_START)
         self._qm_seat_index: Optional[int] = None
@@ -246,21 +258,37 @@ class MultiplayerMenuScene(Scene):
         self._auth_tab = "guest"
 
         # AUTH tab buttons
-        self._btn_tab_login = Button(cx - 175, 225, 110, 40, "로그인", self._on_tab_login)
-        self._btn_tab_register = Button(cx - 55, 225, 110, 40, "회원가입", self._on_tab_register)
-        self._btn_tab_guest = Button(cx + 65, 225, 110, 40, "게스트", self._on_tab_guest)
+        self._btn_tab_login = Button(
+            cx - 175, 225, 110, 40, "로그인", self._on_tab_login
+        )
+        self._btn_tab_register = Button(
+            cx - 55, 225, 110, 40, "회원가입", self._on_tab_register
+        )
+        self._btn_tab_guest = Button(
+            cx + 65, 225, 110, 40, "게스트", self._on_tab_guest
+        )
 
         # AUTH submit
-        self._btn_auth_submit = Button(cx - 100, 415, 200, 44, "접속", self._on_auth_submit)
+        self._btn_auth_submit = Button(
+            cx - 100, 415, 200, 44, "접속", self._on_auth_submit
+        )
 
         # MODE_SELECT buttons
-        self._btn_quick = Button(cx - 110, 280, 220, 50, "빠른 대전", self._on_quick_match)
-        self._btn_create = Button(cx - 110, 345, 220, 50, "방 만들기", self._on_create_room)
+        self._btn_quick = Button(
+            cx - 110, 280, 220, 50, "빠른 대전", self._on_quick_match
+        )
+        self._btn_create = Button(
+            cx - 110, 345, 220, 50, "방 만들기", self._on_create_room
+        )
         self._btn_join = Button(cx - 110, 410, 220, 50, "방 참가", self._on_join_room)
 
         # ROOM_CODE_INPUT buttons
-        self._btn_join_confirm = Button(cx - 110, 340, 220, 50, "입장", self._on_join_confirm)
-        self._btn_join_cancel = Button(cx - 110, 405, 220, 50, "취소", self._on_mode_cancel)
+        self._btn_join_confirm = Button(
+            cx - 110, 340, 220, 50, "입장", self._on_join_confirm
+        )
+        self._btn_join_cancel = Button(
+            cx - 110, 405, 220, 50, "취소", self._on_mode_cancel
+        )
 
         self._btn_back = Button(20, 20, 100, 40, "← 뒤로", self._on_back)
 
@@ -628,16 +656,26 @@ class MultiplayerMenuScene(Scene):
         if self._state == _State.CONNECTING:
             dots = "." * (int(self._spinner_timer * 3) % 4)
             msg = font_sub.render(f"서버에 연결 중{dots}", True, AIR_FORCE_BLUE)
-            screen.blit(msg, msg.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2)))
+            screen.blit(
+                msg, msg.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2))
+            )
 
         elif self._state == _State.AUTH:
             self._render_auth(screen)
 
-        elif self._state in (_State.RECONNECT_WAIT, _State.AUTH_REST, _State.AUTH_WS_WAIT):
+        elif self._state in (
+            _State.RECONNECT_WAIT,
+            _State.AUTH_REST,
+            _State.AUTH_WS_WAIT,
+        ):
             dots = "." * (int(self._spinner_timer * 3) % 4)
-            label = "대전 복귀 중" if self._state == _State.RECONNECT_WAIT else "인증 중"
+            label = (
+                "대전 복귀 중" if self._state == _State.RECONNECT_WAIT else "인증 중"
+            )
             msg = font_sub.render(f"{label}{dots}", True, AIR_FORCE_BLUE)
-            screen.blit(msg, msg.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2)))
+            screen.blit(
+                msg, msg.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2))
+            )
 
         elif self._state == _State.MODE_SELECT:
             lbl = font_sub.render("게임 방식을 선택하세요", True, AIR_FORCE_BLUE)
@@ -649,14 +687,20 @@ class MultiplayerMenuScene(Scene):
         elif self._state == _State.QM_QUEUE:
             dots = "." * (int(self._spinner_timer * 3) % 4)
             msg = font_sub.render(f"상대방을 찾는 중{dots}", True, AIR_FORCE_BLUE)
-            screen.blit(msg, msg.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2)))
+            screen.blit(
+                msg, msg.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2))
+            )
             hint = get_font(14).render("잠시 기다려 주세요...", True, (100, 100, 120))
-            screen.blit(hint, hint.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 40)))
+            screen.blit(
+                hint, hint.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 40))
+            )
 
         elif self._state in (_State.ROOM_CREATE_WAIT, _State.ROOM_JOIN_WAIT):
             dots = "." * (int(self._spinner_timer * 3) % 4)
             msg = font_sub.render(f"방 정보를 불러오는 중{dots}", True, AIR_FORCE_BLUE)
-            screen.blit(msg, msg.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2)))
+            screen.blit(
+                msg, msg.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2))
+            )
 
         elif self._state == _State.ROOM_CODE_INPUT:
             cx = SCREEN_WIDTH // 2
@@ -668,9 +712,14 @@ class MultiplayerMenuScene(Scene):
 
         elif self._state == _State.ERROR:
             err = font_sub.render("연결 오류", True, (180, 40, 40))
-            screen.blit(err, err.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 30)))
+            screen.blit(
+                err, err.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 30))
+            )
             detail = get_font(16).render(self._error_msg, True, (140, 40, 40))
-            screen.blit(detail, detail.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 10)))
+            screen.blit(
+                detail,
+                detail.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 10)),
+            )
 
         # Inline error banner (non-fatal errors in other states)
         if self._error_msg and self._state not in (_State.ERROR, _State.AUTH):
@@ -713,19 +762,31 @@ class MultiplayerMenuScene(Scene):
         lbl_font = get_font(16)
 
         if self._auth_tab == "guest":
-            screen.blit(lbl_font.render("닉네임", True, AIR_FORCE_BLUE), (cx - 160, 332))
+            screen.blit(
+                lbl_font.render("닉네임", True, AIR_FORCE_BLUE), (cx - 160, 332)
+            )
             self._guest_nick.render(screen)
 
         elif self._auth_tab == "login":
-            screen.blit(lbl_font.render("이메일", True, AIR_FORCE_BLUE), (cx - 160, 277))
-            screen.blit(lbl_font.render("비밀번호", True, AIR_FORCE_BLUE), (cx - 160, 337))
+            screen.blit(
+                lbl_font.render("이메일", True, AIR_FORCE_BLUE), (cx - 160, 277)
+            )
+            screen.blit(
+                lbl_font.render("비밀번호", True, AIR_FORCE_BLUE), (cx - 160, 337)
+            )
             self._login_email.render(screen)
             self._login_pw.render(screen)
 
         elif self._auth_tab == "register":
-            screen.blit(lbl_font.render("닉네임", True, AIR_FORCE_BLUE), (cx - 160, 267))
-            screen.blit(lbl_font.render("이메일", True, AIR_FORCE_BLUE), (cx - 160, 322))
-            screen.blit(lbl_font.render("비밀번호", True, AIR_FORCE_BLUE), (cx - 160, 377))
+            screen.blit(
+                lbl_font.render("닉네임", True, AIR_FORCE_BLUE), (cx - 160, 267)
+            )
+            screen.blit(
+                lbl_font.render("이메일", True, AIR_FORCE_BLUE), (cx - 160, 322)
+            )
+            screen.blit(
+                lbl_font.render("비밀번호", True, AIR_FORCE_BLUE), (cx - 160, 377)
+            )
             self._reg_nick.render(screen)
             self._reg_email.render(screen)
             self._reg_pw.render(screen)

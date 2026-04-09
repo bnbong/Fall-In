@@ -385,6 +385,12 @@ class MatchService:
             if seat.player.is_eliminated  # type: ignore[union-attr]
         ]
 
+        # Record the round each seat was first eliminated in.
+        current_round = rules.round_state.round_number
+        for seat_idx in eliminated_seats:
+            if seat_idx not in match.seat_eliminated_round:
+                match.seat_eliminated_round[seat_idx] = current_round
+
         winner_seat: Optional[int] = None
         if rules.game_over and rules.winner is not None:
             winner_seat = match.player_to_seat[rules.winner.player_id]

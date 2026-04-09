@@ -366,8 +366,11 @@ class SettingsPopup:
             exit_color = (120, 60, 60) if not self._is_eliminated else (80, 80, 120)
             pygame.draw.rect(screen, exit_color, self._exit_btn, border_radius=8)
             pygame.draw.rect(
-                screen, (180, 60, 60) if not self._is_eliminated else AIR_FORCE_BLUE,
-                self._exit_btn, width=2, border_radius=8,
+                screen,
+                (180, 60, 60) if not self._is_eliminated else AIR_FORCE_BLUE,
+                self._exit_btn,
+                width=2,
+                border_radius=8,
             )
             exit_font = get_font(14)
             exit_text = exit_font.render(exit_label, True, WHITE)

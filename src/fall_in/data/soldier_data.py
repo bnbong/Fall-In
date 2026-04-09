@@ -120,7 +120,10 @@ class SoldierDataManager:
             json.dump(data, f, ensure_ascii=False, indent=2)
 
     def replace_collected_state(
-        self, collected_ids: set[int], *, persist: bool = True,
+        self,
+        collected_ids: set[int],
+        *,
+        persist: bool = True,
     ) -> None:
         """Replace the full collected snapshot in memory.
 

@@ -56,7 +56,10 @@ def build_remote_match_loading_scene(
                     if msg_type == "PHASE_SELECTING":
                         remaining = float(data.get("remaining_time", 30.0))
                         adapter.notify_selecting_phase_started(remaining)
-                    if pending_reveal_step is not None and adapter.is_turn_reveal_active():
+                    if (
+                        pending_reveal_step is not None
+                        and adapter.is_turn_reveal_active()
+                    ):
                         adapter.queue_turn_reveal_step(pending_reveal_step, state)
                         pending_reveal_step = None
                     elif adapter.is_turn_reveal_active():
@@ -106,9 +109,7 @@ def build_remote_match_loading_scene(
         scene.set_emote_send_callback(
             lambda emote_id: ws.send("EMOTE_SEND", {"emote_id": emote_id})
         )
-        scene.set_exit_match_callback(
-            lambda: ws.send("MATCH_LEAVE")
-        )
+        scene.set_exit_match_callback(lambda: ws.send("MATCH_LEAVE"))
         scene.set_network_tick_callback(_network_tick)
         return scene
 
@@ -155,7 +156,9 @@ def _deserialise_public(data: dict):
             match_id=data.get("match_id", ""),
             round_number=data.get("round_number", 1),
             phase=data.get("phase", ""),
-            player_order_seats=[int(seat) for seat in data.get("player_order_seats", [])],
+            player_order_seats=[
+                int(seat) for seat in data.get("player_order_seats", [])
+            ],
             board_rows=board_rows,
             played_cards_this_turn=played,
             committed_scores={

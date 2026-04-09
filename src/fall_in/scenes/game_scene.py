@@ -459,12 +459,34 @@ class GameScene(Scene, DebugOverlayMixin):
         """
         Convert a network DTO or local Card into a renderable Card object.
 
-        Multiplayer public/private state carries only number + danger, which is
-        enough for the current UI fallback visuals.
+        Multiplayer public/private state carries only number + danger.
+        We enrich the Card with the local player's collection state so that
+        collected soldiers display their individual portrait and info.
+        Each player sees cards based on their own collection — a soldier
+        collected by player A but not player B will appear collected only
+        on A's screen.
         """
         if isinstance(card_like, Card):
             return card_like
-        return Card(number=card_like.number, danger=card_like.danger)
+
+        from fall_in.data.soldier_data import get_soldier_manager
+
+        number = card_like.number
+        danger = card_like.danger
+        manager = get_soldier_manager()
+        soldier = manager.get_soldier(number)
+        if soldier is not None and soldier.is_collected:
+            return Card(
+                number=number,
+                danger=danger,
+                is_collected=True,
+                name=soldier.name,
+                rank=soldier.rank,
+                unit=soldier.unit,
+                note=soldier.note,
+                body_type=soldier.body_type,
+            )
+        return Card(number=number, danger=danger)
 
     def _get_public_state(self):
         """Return the latest multiplayer public state, or None in single-player."""
@@ -484,8 +506,7 @@ class GameScene(Scene, DebugOverlayMixin):
         if public is None:
             return self.rules.board.rows
         return [
-            [self._to_display_card(card) for card in row]
-            for row in public.board_rows
+            [self._to_display_card(card) for card in row] for row in public.board_rows
         ]
 
     def _get_display_hand_cards(self) -> list[Card]:
@@ -519,13 +540,17 @@ class GameScene(Scene, DebugOverlayMixin):
     def _get_local_round_penalty_card_count(self) -> int:
         """Return the local player's penalty-card count for this round."""
         if self._remote_adapter is not None:
-            return self._remote_adapter.get_round_penalty_card_count(self._get_my_seat())
+            return self._remote_adapter.get_round_penalty_card_count(
+                self._get_my_seat()
+            )
         try:
             return int(self.rules.get_player_round_penalty_count(self.human_player))
         except Exception:
             return 0
 
-    def _consume_selection_timer(self, dt: float, *, on_timeout: Optional[Callable[[], None]]) -> bool:
+    def _consume_selection_timer(
+        self, dt: float, *, on_timeout: Optional[Callable[[], None]]
+    ) -> bool:
         """
         Advance the selection timer with hitch protection.
 
@@ -559,7 +584,9 @@ class GameScene(Scene, DebugOverlayMixin):
             for player in self.rules.player_order:
                 entries.append(
                     (
-                        "나" if player == self.human_player else player.name.replace("AI ", ""),
+                        "나"
+                        if player == self.human_player
+                        else player.name.replace("AI ", ""),
                         player == self.human_player,
                     )
                 )
@@ -594,7 +621,9 @@ class GameScene(Scene, DebugOverlayMixin):
                 self.penalty_cards_animating.clear()
 
         if self._remote_reveal_step_timer > 0:
-            self._remote_reveal_step_timer = max(0.0, self._remote_reveal_step_timer - dt)
+            self._remote_reveal_step_timer = max(
+                0.0, self._remote_reveal_step_timer - dt
+            )
             if self._remote_reveal_step_timer > 0:
                 return
 
@@ -603,13 +632,19 @@ class GameScene(Scene, DebugOverlayMixin):
             step, snapshot = next_step
             self._remote_adapter.apply_public_state(snapshot)
             self._remote_current_reveal_seat = step.seat_index
-            actor = "나" if step.seat_index == self._get_my_seat() else self._get_multiplayer_display_name(step.seat_index)
+            actor = (
+                "나"
+                if step.seat_index == self._get_my_seat()
+                else self._get_multiplayer_display_name(step.seat_index)
+            )
             self.message = f"{actor}: #{step.card_number}"
 
             if step.penalty_score > 0 and step.penalty_card_count > 0:
                 # Extend the reveal timer to allow the penalty animation to play.
                 anim_duration = 0.4 + step.penalty_card_count * 0.1
-                self._remote_reveal_step_timer = self._remote_reveal_step_duration + anim_duration
+                self._remote_reveal_step_timer = (
+                    self._remote_reveal_step_duration + anim_duration
+                )
                 self.message_timer = self._remote_reveal_step_timer
                 self._start_remote_penalty_animation(step)
             else:
@@ -642,10 +677,14 @@ class GameScene(Scene, DebugOverlayMixin):
             total_h = panel_count * panel_h + max(0, panel_count - 1) * panel_spacing
             panel_area_top = UI_TOP_BAR_HEIGHT + 10
             panel_area_bottom = SCREEN_HEIGHT - 220
-            panel_start_y = panel_area_top + (panel_area_bottom - panel_area_top - total_h) // 2
+            panel_start_y = (
+                panel_area_top + (panel_area_bottom - panel_area_top - total_h) // 2
+            )
             panel_x = SCREEN_WIDTH - panel_w - 10
             target_x = panel_x + panel_w // 2
-            target_y = panel_start_y + panel_index * (panel_h + panel_spacing) + panel_h // 2
+            target_y = (
+                panel_start_y + panel_index * (panel_h + panel_spacing) + panel_h // 2
+            )
         else:
             target_x, target_y = SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2
 
@@ -656,7 +695,9 @@ class GameScene(Scene, DebugOverlayMixin):
                 duration=0.4 + i * 0.1,
                 easing="ease_in",
             )
-            proxy_card = SimpleNamespace(number=step.card_number, danger=step.card_danger)
+            proxy_card = SimpleNamespace(
+                number=step.card_number, danger=step.card_danger
+            )
             self.penalty_cards_animating.append((proxy_card, tween))
             self.penalty_tweens.add(tween)
 
@@ -737,7 +778,9 @@ class GameScene(Scene, DebugOverlayMixin):
             int(seat_index): int(value)
             for seat_index, value in (data.get("total_scores") or {}).items()
         }
-        normalised["eliminated_seats"] = [int(seat) for seat in data.get("eliminated_seats", [])]
+        normalised["eliminated_seats"] = [
+            int(seat) for seat in data.get("eliminated_seats", [])
+        ]
         self._remote_round_result = normalised
         self._remote_round_result_timer = float(data.get("timeout_seconds", 0))
         self._remote_round_result_acknowledged = False
@@ -760,7 +803,9 @@ class GameScene(Scene, DebugOverlayMixin):
         if self._round_ready_callback is not None:
             self._round_ready_callback()
 
-    def _reset_remote_selecting_phase(self, remaining_time: float = TURN_TIMEOUT_SECONDS) -> None:
+    def _reset_remote_selecting_phase(
+        self, remaining_time: float = TURN_TIMEOUT_SECONDS
+    ) -> None:
         """Reset transient local UI state when the server enters SELECTING."""
         self.turn_timer = remaining_time
         self._last_timeout_tick = -1
@@ -826,7 +871,9 @@ class GameScene(Scene, DebugOverlayMixin):
                     self._remote_selection_sent_pending = True
                 self.turn_timer = 0.0
 
-        consume_selecting = getattr(self._remote_adapter, "consume_selecting_phase_started", None)
+        consume_selecting = getattr(
+            self._remote_adapter, "consume_selecting_phase_started", None
+        )
         if callable(consume_selecting):
             remaining = consume_selecting()
             while remaining is not None:
@@ -867,10 +914,14 @@ class GameScene(Scene, DebugOverlayMixin):
             self._last_timeout_tick = -1
 
         if self._has_remote_round_result_overlay():
-            self._remote_round_result_timer = max(0.0, self._remote_round_result_timer - dt)
+            self._remote_round_result_timer = max(
+                0.0, self._remote_round_result_timer - dt
+            )
         return False
 
-    def _build_remote_game_over_players(self, match_result: dict) -> tuple[Optional[Player], list[Player]]:
+    def _build_remote_game_over_players(
+        self, match_result: dict
+    ) -> tuple[Optional[Player], list[Player]]:
         public = self._get_public_state()
         if public is None:
             return None, []
@@ -884,11 +935,15 @@ class GameScene(Scene, DebugOverlayMixin):
         for seat in sorted(public.seats, key=lambda s: s.seat_index):
             player = Player(
                 name=seat.display_name,
-                player_type=PlayerType.HUMAN if seat.seat_index == my_seat else PlayerType.AI,
+                player_type=PlayerType.HUMAN
+                if seat.seat_index == my_seat
+                else PlayerType.AI,
                 player_id=seat.seat_index,
             )
             player.penalty_score = int(
-                final_scores.get(seat.seat_index, public.committed_scores.get(seat.seat_index, 0))
+                final_scores.get(
+                    seat.seat_index, public.committed_scores.get(seat.seat_index, 0)
+                )
             )
             player.is_eliminated = player.penalty_score >= GAME_OVER_SCORE
             players.append(player)
@@ -896,7 +951,9 @@ class GameScene(Scene, DebugOverlayMixin):
         winner_seat = match_result.get("winner_seat")
         if winner_seat is not None:
             winner_seat = int(winner_seat)
-        winner = next((player for player in players if player.player_id == winner_seat), None)
+        winner = next(
+            (player for player in players if player.player_id == winner_seat), None
+        )
         return winner, players
 
     def _go_to_remote_game_over(self, match_result: dict) -> None:
@@ -944,7 +1001,9 @@ class GameScene(Scene, DebugOverlayMixin):
             for seat in sorted(public.seats, key=lambda s: s.seat_index):
                 player = Player(
                     name=seat.display_name,
-                    player_type=PlayerType.HUMAN if seat.seat_index == my_seat else PlayerType.AI,
+                    player_type=PlayerType.HUMAN
+                    if seat.seat_index == my_seat
+                    else PlayerType.AI,
                     player_id=seat.seat_index,
                 )
                 player.penalty_score = int(
@@ -1109,7 +1168,9 @@ class GameScene(Scene, DebugOverlayMixin):
             elif self._remote_current_reveal_seat is not None:
                 public = self._get_public_state()
                 if public is not None and i < len(public.player_order_seats):
-                    is_current = public.player_order_seats[i] == self._remote_current_reveal_seat
+                    is_current = (
+                        public.player_order_seats[i] == self._remote_current_reveal_seat
+                    )
 
             if is_current:
                 pygame.draw.rect(
@@ -1231,9 +1292,13 @@ class GameScene(Scene, DebugOverlayMixin):
         else:
             other_players = []
 
-        mp_panel_data = self._get_other_player_panels() if self._remote_adapter is not None else []
+        mp_panel_data = (
+            self._get_other_player_panels() if self._remote_adapter is not None else []
+        )
 
-        panel_count = len(other_players) if self._remote_adapter is None else len(mp_panel_data)
+        panel_count = (
+            len(other_players) if self._remote_adapter is None else len(mp_panel_data)
+        )
         panel_w, panel_h = 200, 70
         panel_spacing = 10
         total_panels_height = (
@@ -1498,7 +1563,9 @@ class GameScene(Scene, DebugOverlayMixin):
         if public is not None:
             has_pending_reveal = False
             if self._remote_adapter is not None:
-                has_pending = getattr(self._remote_adapter, "has_pending_reveal_steps", None)
+                has_pending = getattr(
+                    self._remote_adapter, "has_pending_reveal_steps", None
+                )
                 if callable(has_pending):
                     has_pending_reveal = has_pending()
             if self._remote_current_reveal_seat is not None or has_pending_reveal:
@@ -1576,7 +1643,11 @@ class GameScene(Scene, DebugOverlayMixin):
                     )
                 except Exception as exc:  # noqa: BLE001
                     import sys
-                    print(f"[PANEL] failed for player {p.name!r} (id={p.player_id}): {exc}", file=sys.stderr)
+
+                    print(
+                        f"[PANEL] failed for player {p.name!r} (id={p.player_id}): {exc}",
+                        file=sys.stderr,
+                    )
                     panels.append(
                         {
                             "name": p.name,
@@ -1601,7 +1672,7 @@ class GameScene(Scene, DebugOverlayMixin):
         for seat in sorted(public.seats, key=lambda s: s.seat_index):
             if seat.seat_index == my_seat:
                 continue
-            order_pos = (order.index(seat.seat_index) + 1) if seat.seat_index in order else 0
+            order_pos = seat.seat_index + 1
             committed = scores.get(seat.seat_index, 0)
             # Eliminated: score >= 66 or removed from player order
             is_elim = committed >= GAME_OVER_SCORE or (
@@ -1616,7 +1687,9 @@ class GameScene(Scene, DebugOverlayMixin):
                 {
                     "name": seat.display_name,
                     "committed": committed,
-                    "penalty": self._remote_adapter.get_round_penalty_card_count(seat.seat_index),
+                    "penalty": self._remote_adapter.get_round_penalty_card_count(
+                        seat.seat_index
+                    ),
                     "order_pos": order_pos,
                     "seat_index": seat.seat_index,
                     "is_eliminated": is_elim,
@@ -1782,7 +1855,10 @@ class GameScene(Scene, DebugOverlayMixin):
     def handle_event(self, event: pygame.event.Event) -> None:
         """Handle pygame events."""
         if self._has_remote_round_result_overlay():
-            if event.type == pygame.KEYDOWN and event.key in (pygame.K_SPACE, pygame.K_RETURN):
+            if event.type == pygame.KEYDOWN and event.key in (
+                pygame.K_SPACE,
+                pygame.K_RETURN,
+            ):
                 self._confirm_remote_round_result()
                 return
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -1812,7 +1888,10 @@ class GameScene(Scene, DebugOverlayMixin):
                 self._settings_popup.toggle()
                 return
             elif event.key == pygame.K_SPACE:
-                if self._can_interact_with_cards() and self.selected_card_index is not None:
+                if (
+                    self._can_interact_with_cards()
+                    and self.selected_card_index is not None
+                ):
                     self._confirm_card_selection()
 
         if event.type == pygame.MOUSEBUTTONDOWN:
@@ -2236,7 +2315,9 @@ class GameScene(Scene, DebugOverlayMixin):
                                 # Trigger commander reaction on landing
                                 self.commander.react_to_soldier(card.danger)
                             if trigger_shake:
-                                self.screen_shake_intensity = figure.get_shake_intensity()
+                                self.screen_shake_intensity = (
+                                    figure.get_shake_intensity()
+                                )
                                 self.screen_shake_timer = SCREEN_SHAKE_DURATION
 
             committed = self._get_local_committed_score()
@@ -2414,7 +2495,10 @@ class GameScene(Scene, DebugOverlayMixin):
                 screen.blit(hint, (hint_x, hint_y))
 
         # Eliminated spectator banner (multiplayer only)
-        if self._is_local_player_eliminated() and not self._has_remote_round_result_overlay():
+        if (
+            self._is_local_player_eliminated()
+            and not self._has_remote_round_result_overlay()
+        ):
             self._draw_eliminated_banner(screen)
 
         # Settings gear button (top-right)
@@ -2471,7 +2555,9 @@ class GameScene(Scene, DebugOverlayMixin):
         font = get_font(18, "bold")
         small_font = get_font(14)
         title = font.render(f"다른 플레이어의 선택을 기다리는 중{dots}", True, WHITE)
-        subtitle = small_font.render("모든 플레이어가 카드를 고르면 배치가 시작됩니다.", True, WHITE)
+        subtitle = small_font.render(
+            "모든 플레이어가 카드를 고르면 배치가 시작됩니다.", True, WHITE
+        )
 
         box_w = max(title.get_width(), subtitle.get_width()) + 36
         box_h = title.get_height() + subtitle.get_height() + 30
@@ -2525,11 +2611,17 @@ class GameScene(Scene, DebugOverlayMixin):
         body_font = get_font(18)
         small_font = get_font(15)
 
-        title = title_font.render(f"라운드 {result.get('round_number', '?')} 정산", True, WHITE)
+        title = title_font.render(
+            f"라운드 {result.get('round_number', '?')} 정산", True, WHITE
+        )
         screen.blit(title, title.get_rect(center=(panel.centerx, panel.y + 42)))
 
         public = self._get_public_state()
-        seats = sorted(public.seats, key=lambda seat: seat.seat_index) if public is not None else []
+        seats = (
+            sorted(public.seats, key=lambda seat: seat.seat_index)
+            if public is not None
+            else []
+        )
         col_x = [panel.x + 70, panel.x + 320, panel.x + 460, panel.x + 610]
         header_y = panel.y + 95
         headers = ["플레이어", "이번 라운드", "누적 위험도", "상태"]
@@ -2566,7 +2658,9 @@ class GameScene(Scene, DebugOverlayMixin):
             round_value = int(round_danger.get(seat.seat_index, 0))
             round_color = DANGER_DANGER if round_value > 0 else DANGER_SAFE
             round_text = f"+{round_value}" if round_value > 0 else "0"
-            screen.blit(body_font.render(round_text, True, round_color), (col_x[1], row_y))
+            screen.blit(
+                body_font.render(round_text, True, round_color), (col_x[1], row_y)
+            )
 
             total_value = int(total_scores.get(seat.seat_index, 0))
             total_color = get_danger_color(total_value)
@@ -2595,7 +2689,9 @@ class GameScene(Scene, DebugOverlayMixin):
         screen.blit(footer, footer.get_rect(center=(panel.centerx, panel.bottom - 118)))
 
         btn_rect = self._get_round_ready_button_rect()
-        btn_color = (90, 120, 150) if self._remote_round_result_acknowledged else AIR_FORCE_BLUE
+        btn_color = (
+            (90, 120, 150) if self._remote_round_result_acknowledged else AIR_FORCE_BLUE
+        )
         pygame.draw.rect(screen, btn_color, btn_rect, border_radius=10)
         pygame.draw.rect(screen, WHITE, btn_rect, width=2, border_radius=10)
         btn_label = "확인 완료" if self._remote_round_result_acknowledged else "확인"
@@ -2603,7 +2699,9 @@ class GameScene(Scene, DebugOverlayMixin):
         screen.blit(btn_text, btn_text.get_rect(center=btn_rect.center))
 
         shortcut = small_font.render("[ENTER] 또는 [SPACE]로 확인", True, WHITE)
-        screen.blit(shortcut, shortcut.get_rect(center=(panel.centerx, panel.bottom - 24)))
+        screen.blit(
+            shortcut, shortcut.get_rect(center=(panel.centerx, panel.bottom - 24))
+        )
 
     def _draw_dealing_animation(self, screen: pygame.Surface) -> None:
         """Draw cards flying from barracks to hand positions."""

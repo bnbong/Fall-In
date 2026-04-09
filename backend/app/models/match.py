@@ -110,3 +110,8 @@ class ActiveMatch:
     # They are converted to bot immediately but marked as eliminated
     # at the end of the current round in finalize_round().
     voluntarily_left_seats: set[int] = field(default_factory=set)
+
+    # Per-seat elimination round tracking for reward calculation.
+    # Recorded in finalize_round() when a seat is first eliminated.
+    # Winner (or still-active seats) will not appear here.
+    seat_eliminated_round: dict[int, int] = field(default_factory=dict)

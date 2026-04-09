@@ -876,3 +876,34 @@ class TestRoundSettlementFlow:
         assert presence.cancelled == [match.match_id]
         assert presence.revoked == [match.match_id]
         assert match_service.get_match(match.match_id) is None
+
+    def test_rewards_use_per_seat_elimination_round(self, match_service, room_service):
+        """Players eliminated in different rounds receive different rewards."""
+        room = _make_full_room(room_service)
+        match = match_service.create_match(room)
+
+        # Simulate seat 3 eliminated in round 2, seats 1 & 2 in round 4.
+        match.seat_eliminated_round[3] = 2
+        match.seat_eliminated_round[1] = 4
+        match.seat_eliminated_round[2] = 4
+
+        summary = RoundSummary(
+            round_number=4,
+            round_danger={0: 5, 1: 20, 2: 20, 3: 0},
+            total_scores={0: 30, 1: 66, 2: 70, 3: 80},
+            eliminated_seats=[1, 2, 3],
+            game_over=True,
+            winner_seat=0,
+        )
+
+        from app.ws.handler import _calculate_match_rewards
+
+        rewards = _calculate_match_rewards(match, summary)
+
+        # Winner (seat 0): 100 + 4*10 = 140
+        assert rewards[0] == 140
+        # Losers eliminated in round 4 (seats 1, 2): 30 + 4*5 = 50
+        assert rewards[1] == 50
+        assert rewards[2] == 50
+        # Loser eliminated in round 2 (seat 3): 30 + 2*5 = 40
+        assert rewards[3] == 40

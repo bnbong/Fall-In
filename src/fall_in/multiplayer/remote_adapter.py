@@ -34,7 +34,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
-from fall_in.multiplayer.models import ControllerType, PrivatePlayerState, PublicMatchState
+from fall_in.multiplayer.models import (
+    ControllerType,
+    PrivatePlayerState,
+    PublicMatchState,
+)
 
 
 # Emote entry: (seat_index, emote_id)
@@ -98,7 +102,9 @@ class RemoteGameAdapter:
     def is_turn_reveal_active(self) -> bool:
         return self._turn_reveal_active or bool(self._pending_reveal_steps)
 
-    def queue_turn_reveal_step(self, step_data: dict, snapshot: PublicMatchState) -> None:
+    def queue_turn_reveal_step(
+        self, step_data: dict, snapshot: PublicMatchState
+    ) -> None:
         """Store one incremental placement snapshot for later playback."""
         penalty_card_count = int(step_data.get("penalty_card_count", 0))
         step = RevealStep(

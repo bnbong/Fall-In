@@ -782,7 +782,9 @@ async def _reconnect(
                 extra={"user_id": entry.user_id, "match_id": entry.match_id},
             )
             await _error(
-                ws, "ACCOUNT_NOT_ACTIVE", "Account is not active",
+                ws,
+                "ACCOUNT_NOT_ACTIVE",
+                "Account is not active",
                 session=session,
             )
             return
@@ -1116,10 +1118,13 @@ def _apply_mmr_update(match, winner_seat: int) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _calculate_match_rewards(
-    match, summary
-) -> dict[int, int]:
-    """Return {seat_index: reward_amount} for every seat in the match."""
+def _calculate_match_rewards(match, summary) -> dict[int, int]:
+    """Return {seat_index: reward_amount} for every seat in the match.
+
+    Winners receive a victory bonus based on the final round number.
+    Losers receive a defeat bonus based on the round they were eliminated
+    in — a player who survived longer gets a larger reward.
+    """
     rewards: dict[int, int] = {}
     for seat_index in match.seats:
         is_winner = seat_index == summary.winner_seat
@@ -1129,10 +1134,11 @@ def _calculate_match_rewards(
                 + summary.round_number * settings.REWARD_VICTORY_PER_ROUND
             )
         else:
-            amount = (
-                settings.REWARD_DEFEAT_BASE
-                + summary.round_number * settings.REWARD_DEFEAT_PER_ROUND
-            )
+            # Use the round the player was actually eliminated in, not the
+            # final round.  Falls back to summary.round_number for seats
+            # that were never formally eliminated (shouldn't happen).
+            elim_round = match.seat_eliminated_round.get(seat_index, summary.round_number)
+            amount = settings.REWARD_DEFEAT_BASE + elim_round * settings.REWARD_DEFEAT_PER_ROUND
         rewards[seat_index] = amount
     return rewards
 

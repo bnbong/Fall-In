@@ -152,7 +152,8 @@ class PrestigeManager:
             from fall_in.data.soldier_data import get_soldier_manager
 
             get_soldier_manager().replace_collected_state(
-                set(), persist=game._use_local_storage,
+                set(),
+                persist=game._use_local_storage,
             )
 
             from fall_in.core.medal_manager import MedalManager
@@ -168,7 +169,8 @@ class PrestigeManager:
                     "profile": {
                         "icon": "default",
                         "border": self.get_prestige_rewards().get(
-                            "border_style", "basic",
+                            "border_style",
+                            "basic",
                         ),
                     },
                     "medals": ["coup_master"],

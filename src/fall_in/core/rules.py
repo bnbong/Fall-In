@@ -81,7 +81,9 @@ class GameRules:
         if len(players) != NUM_PLAYERS:
             raise ValueError(f"Need exactly {NUM_PLAYERS} players")
         if human_seat is not None and not (0 <= human_seat < NUM_PLAYERS):
-            raise ValueError(f"human_seat must be in [0, {NUM_PLAYERS}), got {human_seat}")
+            raise ValueError(
+                f"human_seat must be in [0, {NUM_PLAYERS}), got {human_seat}"
+            )
 
         self.players = players
         # Index of the "human" player for single-player game-over detection.
@@ -322,11 +324,11 @@ class GameRules:
 
             if human_eliminated:
                 # Single-player: human lost — lowest-score AI wins.
-                human = self.players[self._human_seat]  # type-safe: human_eliminated guarantees _human_seat is not None
+                human = self.players[
+                    self._human_seat
+                ]  # type-safe: human_eliminated guarantees _human_seat is not None
                 ai_players = [
-                    p
-                    for p in self.players
-                    if p is not human and not p.is_eliminated
+                    p for p in self.players if p is not human and not p.is_eliminated
                 ]
                 if ai_players:
                     self.winner = min(ai_players, key=lambda p: p.penalty_score)

@@ -103,12 +103,13 @@ def create_deck() -> list[Card]:
     Returns:
         List of 104 Card objects
     """
-    # Try to load soldier data
+    # Try to load soldier data from the singleton manager, which holds
+    # the authoritative in-memory state (synced from server for registered users).
     soldier_data = {}
     try:
-        from fall_in.data.soldier_data import SoldierDataManager
+        from fall_in.data.soldier_data import get_soldier_manager
 
-        manager = SoldierDataManager()
+        manager = get_soldier_manager()
         for soldier in manager.soldiers.values():
             soldier_data[soldier.id] = soldier
     except Exception:
