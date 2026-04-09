@@ -254,10 +254,15 @@ class TestProgressSync:
         assert data["collected_soldier_ids"] == [11, 42, 77]
         assert data["total_collected"] == 3
 
-    def test_currency_update_persists_exact_wallet_amount(self, client):
+    def test_reward_claim_adds_currency(self, client):
         token = _register_and_get_token(client, "currency@example.com", nickname="Wallet")
-        resp = client.put("/me/currency", headers=_auth(token), json={"currency": 35})
+        resp = client.post(
+            "/me/reward",
+            headers=_auth(token),
+            json={"amount": 35, "reason": "single_play_victory"},
+        )
         assert resp.status_code == 200
+        assert resp.json()["granted"] == 35
         assert resp.json()["currency"] == 35
 
         profile = client.get("/me/profile", headers=_auth(token))
@@ -294,7 +299,11 @@ class TestProgressSync:
             headers=_auth(token),
             json={"currency": 50, "collected_soldier_ids": [7]},
         )
-        update = client.put("/me/currency", headers=_auth(token), json={"currency": 50})
+        update = client.post(
+            "/me/reward",
+            headers=_auth(token),
+            json={"amount": 50, "reason": "single_play_victory"},
+        )
         unlock = client.post(
             "/me/collection/unlock",
             headers=_auth(token),

@@ -57,7 +57,15 @@ class MedalManager:
             self._player_medals = []
 
     def _save_player_medals(self) -> None:
-        """Save player's medals to player_data.json"""
+        """Save player's medals to player_data.json.
+
+        Skipped for registered users — medals are tracked in-memory only;
+        server persistence for medals is not yet implemented.
+        """
+        from fall_in.core.game_manager import GameManager
+
+        if not GameManager()._use_local_storage:
+            return
         try:
             path = DATA_DIR / self._PLAYER_DATA_FILE
             data = {}
@@ -159,20 +167,16 @@ class MedalManager:
         return newly_awarded
 
     def has_all_soldiers_collected(self) -> bool:
-        """Check if all soldiers have been collected (interviewed)"""
+        """Check if all soldiers have been collected (interviewed).
+
+        Uses the in-memory SoldierDataManager state, not the local file,
+        so this works correctly for both registered and guest users.
+        """
         try:
-            collected_path = DATA_DIR / "collected_soldiers.json"
-            if not collected_path.exists():
-                return False
-
-            with open(collected_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                collected_ids = set(data.get("collected_ids", []))
-
-            # Total soldiers is 104 (cards 1-104)
             from fall_in.config import TOTAL_CARDS
+            from fall_in.data.soldier_data import get_soldier_manager
 
-            return len(collected_ids) >= TOTAL_CARDS
+            return get_soldier_manager().get_collected_count() >= TOTAL_CARDS
         except Exception:
             return False
 

@@ -868,6 +868,7 @@ class TestRoundSettlementFlow:
                         "match_id": match.match_id,
                         "winner_seat": 0,
                         "final_scores": {0: 12, 1: 40, 2: 66, 3: 66},
+                        "rewards": {0: 130, 1: 45, 2: 45, 3: 45},
                     },
                 },
             )

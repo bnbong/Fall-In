@@ -17,39 +17,42 @@ class DebugManager:
 
     @classmethod
     def is_debug_enabled(cls) -> bool:
-        """Check if debug mode is enabled"""
-        from fall_in.config import DEBUG_MODE
+        """Check if debug mode is enabled.
 
-        return DEBUG_MODE
+        Always returns False when a multiplayer session is active,
+        regardless of the DEBUG_MODE config flag.
+        """
+        from fall_in.config import DEBUG_MODE
+        from fall_in.core.game_manager import GameManager
+
+        return DEBUG_MODE and not GameManager().has_auth_session()
 
     @classmethod
     def unlock_all_soldiers(cls) -> None:
         """Mark all soldiers as collected."""
-        import json
+        from fall_in.config import TOTAL_CARDS
+        from fall_in.data.soldier_data import get_soldier_manager
 
-        from fall_in.config import DATA_DIR, TOTAL_CARDS
+        manager = get_soldier_manager()
+        all_ids = set(range(1, TOTAL_CARDS + 1))
+        manager.replace_collected_state(all_ids)
 
-        path = DATA_DIR / "collected_soldiers.json"
-        data = {"collected_ids": list(range(1, TOTAL_CARDS + 1))}
+        from fall_in.core.game_manager import GameManager
 
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-
+        GameManager().collected_soldiers = set(all_ids)
         print("[DEBUG] All soldiers unlocked!")
 
     @classmethod
     def clear_all_soldiers(cls) -> None:
         """Reset all soldier collection progress."""
-        import json
+        from fall_in.data.soldier_data import get_soldier_manager
 
-        from fall_in.config import DATA_DIR
+        manager = get_soldier_manager()
+        manager.replace_collected_state(set())
 
-        path = DATA_DIR / "collected_soldiers.json"
-        data: dict[str, list[int]] = {"collected_ids": []}
+        from fall_in.core.game_manager import GameManager
 
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-
+        GameManager().collected_soldiers = set()
         print("[DEBUG] All soldiers cleared!")
 
     @classmethod
@@ -71,23 +74,11 @@ class DebugManager:
     @classmethod
     def set_currency(cls, amount: int) -> None:
         """Set currency to a specific amount."""
-        import json
-
-        from fall_in.config import DATA_DIR
-
-        path = DATA_DIR / "player_data.json"
-        if path.exists():
-            with open(path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-
-            data["currency"] = amount
-
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
-
         from fall_in.core.game_manager import GameManager
 
-        GameManager().currency = amount
+        game = GameManager()
+        game.currency = amount
+        game.save_currency()  # respects _use_local_storage
         print(f"[DEBUG] Currency set to: {amount}")
 
     @classmethod

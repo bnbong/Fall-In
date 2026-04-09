@@ -109,11 +109,12 @@ class DebugOverlayMixin:
             self._debug_overlay_active = False
             return True
 
-        # F12 toggles overlay (only when DEBUG_MODE is on)
+        # F12 toggles overlay (only when DEBUG_MODE is on and not in multiplayer)
         if event.key == pygame.K_F12:
             from fall_in.config import DEBUG_MODE
+            from fall_in.core.game_manager import GameManager
 
-            if DEBUG_MODE:
+            if DEBUG_MODE and not GameManager().has_auth_session():
                 self._debug_overlay_active = not self._debug_overlay_active
             return True
 

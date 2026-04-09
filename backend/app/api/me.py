@@ -5,9 +5,12 @@ GET /me/profile    — available to registered and guest users
 GET /me/collection — registered users only (guests have no persistent collection)
 """
 
-from fastapi import APIRouter, Depends
+import time
+
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.database import get_db
 from app.dependencies import get_current_user, require_registered
 from app.models.db import User
@@ -16,10 +19,10 @@ from app.schemas.profile import CollectionEntry, CollectionResponse, ProfileResp
 from app.schemas.progress import (
     CollectionUnlockRequest,
     CollectionUnlockResponse,
-    CurrencyUpdateRequest,
-    CurrencyUpdateResponse,
     ProgressMergeRequest,
     ProgressMergeResponse,
+    RewardClaimRequest,
+    RewardClaimResponse,
 )
 
 router = APIRouter(prefix="/me", tags=["me"])
@@ -107,17 +110,35 @@ def merge_progress(
     )
 
 
-@router.put("/currency", response_model=CurrencyUpdateResponse)
-def update_currency(
-    req: CurrencyUpdateRequest,
+# Per-user rate-limit state for single-play reward claims.
+# Key: user_id, Value: last claim timestamp.
+_reward_last_claim: dict[str, float] = {}
+
+
+@router.post("/reward", response_model=RewardClaimResponse)
+def claim_reward(
+    req: RewardClaimRequest,
     user: User = Depends(require_registered),
     db: Session = Depends(get_db),
-) -> CurrencyUpdateResponse:
+) -> RewardClaimResponse:
     """
-    Persist the exact wallet amount for the authenticated registered user.
+    Claim a delta-based currency reward from a single-player game.
+
+    The server validates:
+      - amount does not exceed REWARD_SINGLE_PLAY_MAX
+      - minimum cooldown between claims (rate-limit)
     """
-    profile_repo.set_currency(db, user.profile, req.currency)
-    return CurrencyUpdateResponse(currency=req.currency)
+    if req.amount > settings.REWARD_SINGLE_PLAY_MAX:
+        raise HTTPException(status_code=422, detail="Reward amount exceeds maximum")
+
+    now = time.monotonic()
+    last = _reward_last_claim.get(user.id, 0.0)
+    if now - last < settings.REWARD_SINGLE_PLAY_COOLDOWN_SECONDS:
+        raise HTTPException(status_code=429, detail="Reward claim too frequent")
+    _reward_last_claim[user.id] = now
+
+    profile_repo.add_currency(db, user.profile, req.amount)
+    return RewardClaimResponse(granted=req.amount, currency=user.profile.currency)
 
 
 @router.post("/collection/unlock", response_model=CollectionUnlockResponse)

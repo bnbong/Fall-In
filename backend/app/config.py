@@ -77,6 +77,17 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
     ADMIN_TOKEN: str = ""
 
+    # Reward constants (must match client-side values for single-player validation).
+    REWARD_VICTORY_BASE: int = 100
+    REWARD_VICTORY_PER_ROUND: int = 10
+    REWARD_DEFEAT_BASE: int = 30
+    REWARD_DEFEAT_PER_ROUND: int = 5
+    # Maximum reward the server will accept from a single-play claim.
+    # Victory at round 10 = 100 + 10*10 = 200; generous cap at 500.
+    REWARD_SINGLE_PLAY_MAX: int = 500
+    # Rate-limit: minimum seconds between single-play reward claims.
+    REWARD_SINGLE_PLAY_COOLDOWN_SECONDS: int = 30
+
     # CORS — comma-separated origins, or ["*"] for wide-open dev.
     # Production example: "https://fallin.example.com,https://web.fallin.example.com"
     CORS_ORIGINS: list[str] = ["*"]

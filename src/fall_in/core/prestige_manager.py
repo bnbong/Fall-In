@@ -57,7 +57,15 @@ class PrestigeManager:
             self._coup_unlocked = False
 
     def _save_prestige_data(self) -> None:
-        """Save prestige data"""
+        """Save prestige data.
+
+        Skipped for registered users — prestige state is tracked in-memory
+        only; server persistence for prestige is not yet implemented.
+        """
+        from fall_in.core.game_manager import GameManager
+
+        if not GameManager()._use_local_storage:
+            return
         try:
             path = DATA_DIR / self._PLAYER_DATA_FILE
             data = {}
@@ -133,29 +141,44 @@ class PrestigeManager:
             # Reset coup_unlocked - player must achieve coup again for next prestige
             self._coup_unlocked = False
 
-            # Reset player data
-            path = DATA_DIR / self._PLAYER_DATA_FILE
-            new_data = {
-                "currency": 0,
-                "prestige_count": self._prestige_count,
-                "profile": {
-                    "icon": "default",
-                    "border": self.get_prestige_rewards().get("border_style", "basic"),
-                },
-                "medals": ["coup_master"],  # Preserve coup medal
-                "coup_unlocked": False,  # Reset - must achieve coup again
-                "max_smuggle_count": 1 + self._prestige_count,  # Base + prestige bonus
-                "win_count": 0,
-                "max_survived_rounds": 0,
-            }
+            from fall_in.core.game_manager import GameManager
 
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump(new_data, f, ensure_ascii=False, indent=2)
+            game = GameManager()
 
-            # Reset collected soldiers
-            collected_path = DATA_DIR / self._COLLECTED_SOLDIERS_FILE
-            with open(collected_path, "w", encoding="utf-8") as f:
-                json.dump({"collected_ids": []}, f, ensure_ascii=False, indent=2)
+            # Reset in-memory state
+            game.currency = 0
+            game.collected_soldiers = set()
+
+            from fall_in.data.soldier_data import get_soldier_manager
+
+            get_soldier_manager().replace_collected_state(
+                set(), persist=game._use_local_storage,
+            )
+
+            from fall_in.core.medal_manager import MedalManager
+
+            MedalManager().reset(keep_special=True)
+
+            # Persist to local files only for guests
+            if game._use_local_storage:
+                path = DATA_DIR / self._PLAYER_DATA_FILE
+                new_data = {
+                    "currency": 0,
+                    "prestige_count": self._prestige_count,
+                    "profile": {
+                        "icon": "default",
+                        "border": self.get_prestige_rewards().get(
+                            "border_style", "basic",
+                        ),
+                    },
+                    "medals": ["coup_master"],
+                    "coup_unlocked": False,
+                    "max_smuggle_count": 1 + self._prestige_count,
+                    "win_count": 0,
+                    "max_survived_rounds": 0,
+                }
+                with open(path, "w", encoding="utf-8") as f:
+                    json.dump(new_data, f, ensure_ascii=False, indent=2)
 
             return True
         except Exception:

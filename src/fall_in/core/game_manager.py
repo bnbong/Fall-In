@@ -76,7 +76,8 @@ class GameManager:
         self.bgm_volume = 0.5
         self.sfx_volume = 0.7
 
-        # Load saved local progress
+        # Load saved local progress (will be overridden by server data for
+        # registered users after bootstrap_authenticated_account()).
         self.load_local_progress()
 
     def _get_data_path(self) -> Path:
@@ -120,7 +121,12 @@ class GameManager:
         return {}
 
     def save_currency(self) -> None:
-        """Save currency to data file, preserving other fields"""
+        """Save currency to data file, preserving other fields.
+
+        Skipped for registered users — the server DB is the source of truth.
+        """
+        if not self._use_local_storage:
+            return
         try:
             existing_data = self.load_player_data()
             existing_data["currency"] = self.currency
@@ -135,11 +141,11 @@ class GameManager:
         with open(data_path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
 
-    def add_currency(self, amount: int) -> None:
-        """Add currency (수당) to player wallet"""
+    def add_currency(self, amount: int, *, reason: str | None = None) -> None:
+        """Add currency (수당) to player wallet."""
         self.currency += amount
         self.save_currency()
-        self._sync_currency_async()
+        self._sync_reward_async(amount, reason)
 
     def spend_currency(self, amount: int) -> bool:
         """
@@ -149,13 +155,17 @@ class GameManager:
         if self.currency >= amount:
             self.currency -= amount
             self.save_currency()
-            self._sync_currency_async()
             return True
         return False
 
     def has_currency(self, amount: int) -> bool:
         """Check if player has enough currency"""
         return self.currency >= amount
+
+    @property
+    def _use_local_storage(self) -> bool:
+        """Local file persistence is only for guests / unauthenticated."""
+        return self.account_type != "registered"
 
     def has_auth_session(self) -> bool:
         return bool(self.access_token and self.account_type)
@@ -241,13 +251,21 @@ class GameManager:
         currency: int,
         collected_soldier_ids: list[int],
     ) -> None:
+        """Apply server-authoritative progress to in-memory state.
+
+        For registered users, only updates in-memory (no local file write).
+        For guests, persists to local files as well.
+        """
         self.currency = currency
-        self.save_currency()
+        self.save_currency()  # no-op for registered (guarded internally)
 
         from fall_in.data.soldier_data import get_soldier_manager
 
         manager = get_soldier_manager()
-        manager.replace_collected_state(set(collected_soldier_ids))
+        manager.replace_collected_state(
+            set(collected_soldier_ids),
+            persist=self._use_local_storage,
+        )
         self.collected_soldiers = set(collected_soldier_ids)
 
     def bootstrap_authenticated_account(self, sync_local_progress: bool) -> dict:
@@ -306,20 +324,23 @@ class GameManager:
 
         threading.Thread(target=_worker, daemon=True).start()
 
-    def _sync_currency_async(self) -> None:
+    def _sync_reward_async(self, amount: int, reason: str | None) -> None:
+        """Send a delta-based reward claim to the server."""
         if not self.has_registered_session() or self.access_token is None:
             return
+        if amount <= 0 or reason is None:
+            return
 
-        currency = self.currency
+        token = self.access_token
 
         def _worker() -> None:
             try:
-                from fall_in.net.backend_api import put_json
+                from fall_in.net.backend_api import post_json
 
-                put_json(
-                    "/me/currency",
-                    {"currency": currency},
-                    token=self.access_token,
+                post_json(
+                    "/me/reward",
+                    {"amount": amount, "reason": reason},
+                    token=token,
                 )
             except Exception:
                 pass
@@ -389,7 +410,7 @@ class GameManager:
 
     def cleanup(self) -> None:
         """Clean up resources"""
-        self.save_currency()  # Save before exit
+        self.save_currency()  # no-op for registered users
         pygame.mixer.quit()
         pygame.quit()
 

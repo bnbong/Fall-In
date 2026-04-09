@@ -1046,6 +1046,8 @@ async def _continue_after_round_settlement(
     presence_manager.cancel_round_settlement_timeout(match.match_id)
 
     if summary.game_over:
+        rewards = _calculate_match_rewards(match, summary)
+        _grant_match_rewards(match, rewards)
         await manager.broadcast_to_room(
             room_code,
             {
@@ -1054,6 +1056,7 @@ async def _continue_after_round_settlement(
                     "match_id": match.match_id,
                     "winner_seat": summary.winner_seat,
                     "final_scores": summary.total_scores,
+                    "rewards": rewards,
                 },
             },
         )
@@ -1103,6 +1106,57 @@ def _apply_mmr_update(match, winner_seat: int) -> None:
         logger.exception(
             "mmr_update_failed",
             extra={"match_id": match.match_id, "winner_seat": winner_seat},
+        )
+    finally:
+        db.close()
+
+
+# ---------------------------------------------------------------------------
+# Reward helper (PR-09)
+# ---------------------------------------------------------------------------
+
+
+def _calculate_match_rewards(
+    match, summary
+) -> dict[int, int]:
+    """Return {seat_index: reward_amount} for every seat in the match."""
+    rewards: dict[int, int] = {}
+    for seat_index in match.seats:
+        is_winner = seat_index == summary.winner_seat
+        if is_winner:
+            amount = (
+                settings.REWARD_VICTORY_BASE
+                + summary.round_number * settings.REWARD_VICTORY_PER_ROUND
+            )
+        else:
+            amount = (
+                settings.REWARD_DEFEAT_BASE
+                + summary.round_number * settings.REWARD_DEFEAT_PER_ROUND
+            )
+        rewards[seat_index] = amount
+    return rewards
+
+
+def _grant_match_rewards(match, rewards: dict[int, int]) -> None:
+    """Persist currency rewards for registered human seats."""
+    from app.database import SessionLocal
+    from app.repositories import profile_repo
+    from app.repositories import user_repo as _user_repo
+
+    db = SessionLocal()
+    try:
+        for seat_index, amount in rewards.items():
+            seat = match.seats.get(seat_index)
+            if seat is None or seat.account_type != "registered" or seat.user_id is None:
+                continue
+            user = _user_repo.get_by_id(db, seat.user_id)
+            if user is None or user.profile is None:
+                continue
+            profile_repo.add_currency(db, user.profile, amount)
+    except Exception:
+        logger.exception(
+            "reward_grant_failed",
+            extra={"match_id": match.match_id},
         )
     finally:
         db.close()

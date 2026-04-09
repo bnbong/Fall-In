@@ -5,6 +5,7 @@ Centralizes all tunable game parameters, layout values, and magic numbers
 so they can be adjusted from a single location.
 """
 
+import os as _os
 from pathlib import Path
 
 
@@ -28,7 +29,11 @@ GAME_TITLE = "헤쳐 모여! (Fall In!)"
 # =============================================================================
 # Debug Mode
 # =============================================================================
-DEBUG_MODE = True  # Set to False for production builds
+# Defaults to False in packaged builds (PyInstaller sets FALL_IN_PRODUCTION=1).
+# For local dev, set FALL_IN_DEBUG=1 to enable.
+DEBUG_MODE = _os.environ.get("FALL_IN_DEBUG", "") == "1" and not _os.environ.get(
+    "FALL_IN_PRODUCTION", ""
+)
 
 # =============================================================================
 # Colors

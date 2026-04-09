@@ -94,6 +94,9 @@ def validate_nickname(raw: str) -> str:
     if not _ALLOWED_RE.match(nick):
         raise NicknameError("닉네임에는 한글, 영문, 숫자, 밑줄(_), 공백만 사용할 수 있습니다.")
 
+    if "  " in nick:
+        raise NicknameError("닉네임에 연속된 공백은 사용할 수 없습니다.")
+
     if _ALL_DIGITS_RE.match(nick):
         raise NicknameError("닉네임은 숫자만으로 구성될 수 없습니다.")
 

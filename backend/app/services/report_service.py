@@ -25,6 +25,7 @@ post-beta.
 from __future__ import annotations
 
 import logging
+import re
 from typing import Optional
 
 from sqlalchemy.orm import Session
@@ -35,6 +36,7 @@ from app.repositories import report_repo
 logger = logging.getLogger("fall_in.report")
 
 _DETAILS_MAX_LEN = 280
+_HTML_TAG_RE = re.compile(r"<[^>]+>")
 
 
 class ReportError(ValueError):
@@ -76,10 +78,10 @@ def submit_report(
     if reporter_user_id and reporter_user_id == reported_user_id:
         raise ReportError("자기 자신을 신고할 수 없습니다.")
 
-    # Sanitise optional details.
+    # Sanitise optional details: strip HTML tags, then trim.
     clean_details: Optional[str] = None
     if details:
-        clean_details = details.strip()[:_DETAILS_MAX_LEN]
+        clean_details = _HTML_TAG_RE.sub("", details).strip()[:_DETAILS_MAX_LEN]
         if not clean_details:
             clean_details = None
 

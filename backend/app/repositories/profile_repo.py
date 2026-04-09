@@ -20,3 +20,12 @@ def set_currency(db: Session, profile: Profile, currency: int) -> Profile:
     db.commit()
     db.refresh(profile)
     return profile
+
+
+def add_currency(db: Session, profile: Profile, delta: int) -> Profile:
+    """Atomically add *delta* to the profile's wallet (can be negative)."""
+    profile.currency = max(0, profile.currency + delta)
+    profile.updated_at = _utcnow()
+    db.commit()
+    db.refresh(profile)
+    return profile

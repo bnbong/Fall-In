@@ -34,7 +34,7 @@ a = Analysis(
     ],
     hookspath=[],
     hooksconfig={},
-    runtime_hooks=[],
+    runtime_hooks=["runtime_hook_production.py"],
     excludes=[
         "tkinter",
         "unittest",

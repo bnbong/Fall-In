@@ -3,9 +3,11 @@ Schemas for client progress synchronisation.
 
 These endpoints are intentionally narrow:
   - initial merge of local single-player progress into a registered account
-  - exact currency updates after in-game earn/spend events
+  - delta-based reward claims with server-side validation
   - idempotent soldier unlock writes
 """
+
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -21,11 +23,18 @@ class ProgressMergeResponse(BaseModel):
     total_collected: int
 
 
-class CurrencyUpdateRequest(BaseModel):
-    currency: int = Field(ge=0)
+class RewardClaimRequest(BaseModel):
+    """Delta-based reward claim with reason for server validation."""
+
+    amount: int = Field(ge=0)
+    reason: Literal[
+        "single_play_victory",
+        "single_play_defeat",
+    ]
 
 
-class CurrencyUpdateResponse(BaseModel):
+class RewardClaimResponse(BaseModel):
+    granted: int
     currency: int
 
 

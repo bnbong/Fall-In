@@ -50,6 +50,7 @@ class GameOverScene(Scene):
         players: list[Player],
         round_number: int,
         early_exit: bool = False,
+        multiplayer_reward: Optional[int] = None,
     ):
         super().__init__()
         self.winner = winner
@@ -72,11 +73,24 @@ class GameOverScene(Scene):
         self.is_coup_ending = self._check_coup_ending() if not self.early_exit else False
 
         # Calculate and apply rewards
-        self.reward = 0 if self.early_exit else self._calculate_reward()
+        if self.early_exit:
+            self.reward = 0
+        elif multiplayer_reward is not None:
+            # Multiplayer: server already granted the reward to the DB.
+            # Just update local display state — no server sync needed.
+            self.reward = multiplayer_reward
+        else:
+            self.reward = self._calculate_reward()
 
         from fall_in.core.game_manager import GameManager
 
-        GameManager().add_currency(self.reward)
+        gm = GameManager()
+        if multiplayer_reward is not None:
+            # Server already persisted; just bump the local counter for display.
+            gm.currency += self.reward
+        else:
+            reason = "single_play_victory" if self.is_victory else "single_play_defeat"
+            gm.add_currency(self.reward, reason=reason)
         if not self.early_exit:
             self._award_medals()
         else:

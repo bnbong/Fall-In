@@ -80,6 +80,8 @@ class GameRules:
     def __init__(self, players: list[Player], human_seat: Optional[int] = 0):
         if len(players) != NUM_PLAYERS:
             raise ValueError(f"Need exactly {NUM_PLAYERS} players")
+        if human_seat is not None and not (0 <= human_seat < NUM_PLAYERS):
+            raise ValueError(f"human_seat must be in [0, {NUM_PLAYERS}), got {human_seat}")
 
         self.players = players
         # Index of the "human" player for single-player game-over detection.

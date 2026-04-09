@@ -183,7 +183,7 @@ class SettingsPopup:
             pos = event.pos
             if self._confirm_yes_btn.collidepoint(pos):
                 self._confirm_exit_mode = False
-                self.visible = False
+                self.hide()  # saves audio settings via AudioManager
                 if self._exit_callback is not None:
                     self._exit_callback()
                 return True

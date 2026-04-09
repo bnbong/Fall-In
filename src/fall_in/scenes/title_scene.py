@@ -260,10 +260,11 @@ class TitleScene(Scene):
             self._open_debug_menu()
 
     def _open_debug_menu(self) -> None:
-        """Open debug menu if debug mode is enabled"""
+        """Open debug menu if debug mode is enabled and not in multiplayer."""
         from fall_in.config import DEBUG_MODE
+        from fall_in.core.game_manager import GameManager
 
-        if not DEBUG_MODE:
+        if not DEBUG_MODE or GameManager().has_auth_session():
             return
 
         from fall_in.core.game_manager import GameManager

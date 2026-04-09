@@ -64,12 +64,13 @@ app.include_router(ws_router.router)
 @app.get("/healthz", tags=["ops"])
 def health_check():
     """Liveness probe. Verifies the DB connection pool is healthy."""
+    db = SessionLocal()
     try:
-        db = SessionLocal()
         db.execute(text("SELECT 1"))
-        db.close()
     except Exception:
         return {"status": "degraded", "db": "unreachable"}
+    finally:
+        db.close()
     return {"status": "ok"}
 
 

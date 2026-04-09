@@ -87,6 +87,8 @@ class EmotePopup:
 
         # Emote image cache (lazy-loaded from asset manifest)
         self._emote_images: dict[str, pygame.Surface] = {}
+        # Pre-scaled 36x36 surfaces, computed once per emote
+        self._scaled_images: dict[str, pygame.Surface] = {}
         self._images_loaded: bool = False
 
     # ------------------------------------------------------------------
@@ -244,8 +246,11 @@ class EmotePopup:
             # Emote image — use PNG if available, else emoji text
             drawn_image = False
             if emote_id in self._emote_images:
-                img = self._emote_images[emote_id]
-                img_scaled = pygame.transform.smoothscale(img, (36, 36))
+                if emote_id not in self._scaled_images:
+                    self._scaled_images[emote_id] = pygame.transform.smoothscale(
+                        self._emote_images[emote_id], (36, 36)
+                    )
+                img_scaled = self._scaled_images[emote_id]
                 img_rect = img_scaled.get_rect(
                     centerx=btn_rect.centerx,
                     top=btn_rect.top + 8,

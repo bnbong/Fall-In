@@ -180,6 +180,8 @@ class RoomLobbyScene(Scene):
     # ------------------------------------------------------------------
 
     def handle_event(self, event: pygame.event.Event) -> None:
+        if self._match_starting:
+            return
         self._btn_leave.handle_event(event)
         self._btn_ready.handle_event(event)
         if self._am_owner:

@@ -120,18 +120,20 @@ class AccountGateScene(Scene):
         input_w = 320
         cx = SCREEN_WIDTH // 2
 
-        self._login_email = _TextInput(cx - input_w // 2, 295, input_w, 44, "이메일")
-        self._login_pw = _TextInput(cx - input_w // 2, 355, input_w, 44, "비밀번호", password=True)
-        self._reg_nick = _TextInput(cx - input_w // 2, 285, input_w, 44, "닉네임 (2~20자)")
-        self._reg_email = _TextInput(cx - input_w // 2, 340, input_w, 44, "이메일")
-        self._reg_pw = _TextInput(cx - input_w // 2, 395, input_w, 44, "비밀번호", password=True)
-        self._guest_nick = _TextInput(cx - input_w // 2, 350, input_w, 44, "닉네임 (2~20자)")
+        # Hint text sits at y=280, first input at y=305.
+        self._login_email = _TextInput(cx - input_w // 2, 305, input_w, 44, "이메일")
+        self._login_pw = _TextInput(cx - input_w // 2, 360, input_w, 44, "비밀번호", password=True)
+        self._reg_nick = _TextInput(cx - input_w // 2, 305, input_w, 44, "닉네임 (2~20자)")
+        self._reg_email = _TextInput(cx - input_w // 2, 358, input_w, 44, "이메일")
+        self._reg_pw = _TextInput(cx - input_w // 2, 411, input_w, 44, "비밀번호", password=True)
+        self._guest_nick = _TextInput(cx - input_w // 2, 305, input_w, 44, "닉네임 (2~20자)")
 
         self._auth_tab = "guest"
         self._btn_tab_login = Button(cx - 175, 225, 110, 40, "로그인", self._on_tab_login)
         self._btn_tab_register = Button(cx - 55, 225, 110, 40, "회원가입", self._on_tab_register)
         self._btn_tab_guest = Button(cx + 65, 225, 110, 40, "게스트", self._on_tab_guest)
-        self._btn_auth_submit = Button(cx - 100, 415, 200, 44, "계속", self._on_auth_submit)
+        # Submit button position varies by tab — set dynamically in render.
+        self._btn_auth_submit = Button(cx - 100, 420, 200, 44, "계속", self._on_auth_submit)
 
     def _on_tab_login(self) -> None:
         self._auth_tab = "login"
@@ -324,19 +326,22 @@ class AccountGateScene(Scene):
 
         lbl_font = get_font(16)
         if self._auth_tab == "login":
+            hint = lbl_font.render("기존 계정으로 이어서 플레이", True, AIR_FORCE_BLUE)
+            screen.blit(hint, hint.get_rect(center=(cx, 280)))
             self._login_email.render(screen)
             self._login_pw.render(screen)
-            hint = lbl_font.render("기존 계정으로 이어서 플레이", True, AIR_FORCE_BLUE)
-            screen.blit(hint, hint.get_rect(center=(cx, 260)))
+            self._btn_auth_submit.rect.y = 420
         elif self._auth_tab == "register":
+            hint = lbl_font.render("새 계정을 만들고 진행도를 서버와 연결", True, AIR_FORCE_BLUE)
+            screen.blit(hint, hint.get_rect(center=(cx, 280)))
             self._reg_nick.render(screen)
             self._reg_email.render(screen)
             self._reg_pw.render(screen)
-            hint = lbl_font.render("새 계정을 만들고 진행도를 서버와 연결", True, AIR_FORCE_BLUE)
-            screen.blit(hint, hint.get_rect(center=(cx, 260)))
+            self._btn_auth_submit.rect.y = 470
         else:
-            self._guest_nick.render(screen)
             hint = lbl_font.render("게스트로 시작하며 로컬 진행도를 그대로 사용", True, AIR_FORCE_BLUE)
-            screen.blit(hint, hint.get_rect(center=(cx, 315)))
+            screen.blit(hint, hint.get_rect(center=(cx, 280)))
+            self._guest_nick.render(screen)
+            self._btn_auth_submit.rect.y = 370
 
         self._btn_auth_submit.render(screen)

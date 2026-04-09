@@ -904,6 +904,11 @@ class GameScene(Scene, DebugOverlayMixin):
         if not players:
             return
 
+        # Extract per-seat reward granted by the server.
+        my_seat = self._get_my_seat()
+        rewards = match_result.get("rewards") or {}
+        my_reward = int(rewards.get(str(my_seat), rewards.get(my_seat, 0)))
+
         from fall_in.core.game_manager import GameManager, GameState
         from fall_in.scenes.game_over_scene import GameOverScene
 
@@ -915,6 +920,7 @@ class GameScene(Scene, DebugOverlayMixin):
                 winner=winner,
                 players=players,
                 round_number=self._get_round_number(),
+                multiplayer_reward=my_reward,
             )
         )
 
