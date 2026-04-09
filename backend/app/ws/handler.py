@@ -60,7 +60,7 @@ async def handle_message(
     db,
 ) -> None:
     msg_type = raw.get("type")
-    data = raw.get("data") or {}
+    data = raw.get("data", {})
 
     if msg_type == "WS_HELLO":
         await _hello(ws, session)
@@ -748,6 +748,7 @@ async def _reconnect(
 
     entry = presence_manager.lookup_token(token)
     if entry is None:
+        logger.warning("reconnect_invalid_token", extra={"conn_id": session.connection_id})
         await _error(
             ws,
             "INVALID_RECONNECT_TOKEN",
@@ -757,6 +758,10 @@ async def _reconnect(
         return
 
     if entry.account_type != "registered":
+        logger.warning(
+            "reconnect_guest_denied",
+            extra={"conn_id": session.connection_id, "match_id": entry.match_id},
+        )
         await _error(
             ws,
             "GUEST_RECONNECT_NOT_ALLOWED",
@@ -772,20 +777,39 @@ async def _reconnect(
 
         user = user_repo.get_by_id(db, entry.user_id)
         if user is None or user.status != UserStatus.ACTIVE:
-            await _error(ws, "ACCOUNT_NOT_ACTIVE", "Account is not active", session=session)
+            logger.warning(
+                "reconnect_account_inactive",
+                extra={"user_id": entry.user_id, "match_id": entry.match_id},
+            )
+            await _error(
+                ws, "ACCOUNT_NOT_ACTIVE", "Account is not active",
+                session=session,
+            )
             return
 
     match = match_service.get_match(entry.match_id)
     if match is None:
+        logger.info(
+            "reconnect_match_ended",
+            extra={"match_id": entry.match_id, "conn_id": session.connection_id},
+        )
         await _error(ws, "MATCH_NOT_FOUND", "Match has already ended", session=session)
         return
 
     seat = match.seats.get(entry.seat_index)
     if seat is None:
+        logger.warning(
+            "reconnect_seat_missing",
+            extra={"match_id": entry.match_id, "seat": entry.seat_index},
+        )
         await _error(ws, "SEAT_NOT_FOUND", "Seat no longer exists in match", session=session)
         return
 
     if seat.took_over_by_bot:
+        logger.info(
+            "reconnect_seat_taken_over",
+            extra={"match_id": entry.match_id, "seat": entry.seat_index},
+        )
         await _error(
             ws,
             "SEAT_TAKEN_OVER",
@@ -1075,6 +1099,11 @@ def _apply_mmr_update(match, winner_seat: int) -> None:
     db = SessionLocal()
     try:
         mmr_service.persist_updates(db, match, winner_seat)
+    except Exception:
+        logger.exception(
+            "mmr_update_failed",
+            extra={"match_id": match.match_id, "winner_seat": winner_seat},
+        )
     finally:
         db.close()
 

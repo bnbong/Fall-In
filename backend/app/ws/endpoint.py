@@ -32,6 +32,7 @@ from app.database import get_db
 from app.models.room import SeatControllerType
 from app.repositories.match_repo import InMemoryMatchRepo
 from app.repositories.room_repo import InMemoryRoomRepo
+from app.services.emote_service import emote_service
 from app.services.match_service import MatchService
 from app.services.matchmaking_service import MatchmakingService
 from app.services.matchmaking_service import matchmaking_service as _default_matchmaking_service
@@ -228,6 +229,7 @@ async def websocket_endpoint(
                         },
                     )
 
+        emote_service.cleanup_connection(conn_id)
         manager.disconnect(conn_id, session.room_code)
         logger.info(
             "ws_disconnect",

@@ -16,7 +16,6 @@ import pygame
 
 from fall_in.config import (
     AIR_FORCE_BLUE,
-    LIGHT_BLUE,
     WHITE,
     SAND_BEIGE,
     SCREEN_WIDTH,

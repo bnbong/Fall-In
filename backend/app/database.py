@@ -19,9 +19,16 @@ from app.config import settings
 
 
 def _make_engine(url: str):
-    kwargs = {}
+    kwargs: dict = {}
     if url.startswith("sqlite"):
         kwargs["connect_args"] = {"check_same_thread": False}
+    else:
+        # Production DB (PostgreSQL): detect stale connections after DB restart
+        # and set a reasonable connection timeout.
+        kwargs["pool_pre_ping"] = True
+        kwargs["pool_size"] = 5
+        kwargs["max_overflow"] = 10
+        kwargs["pool_timeout"] = 10
     return create_engine(url, **kwargs)
 
 

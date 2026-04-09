@@ -162,6 +162,17 @@ class EmoteService:
         return max(0.0, remaining)
 
     # ------------------------------------------------------------------
+    # Connection cleanup
+    # ------------------------------------------------------------------
+
+    def cleanup_connection(self, conn_id: str) -> None:
+        """Remove all rate-limit state for a disconnected connection."""
+        self._last_sent.pop(conn_id, None)
+        self._window_history.pop(conn_id, None)
+        self._same_emote.pop(conn_id, None)
+        self._last_deny_reason.pop(conn_id, None)
+
+    # ------------------------------------------------------------------
     # Lifecycle
     # ------------------------------------------------------------------
 

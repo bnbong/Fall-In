@@ -77,6 +77,10 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
     ADMIN_TOKEN: str = ""
 
+    # CORS — comma-separated origins, or ["*"] for wide-open dev.
+    # Production example: "https://fallin.example.com,https://web.fallin.example.com"
+    CORS_ORIGINS: list[str] = ["*"]
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

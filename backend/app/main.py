@@ -13,13 +13,15 @@ See docs/local-beta-setup.md for the full beta smoke-test walkthrough.
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 
 from app.api import admin as admin_router
 from app.api import auth as auth_router
 from app.api import me as me_router
 from app.api import report as report_router
 from app.config import settings
-from app.database import Base, engine
+from app.database import Base, SessionLocal, engine
 from app.logging_config import configure_logging
 from app.ws import endpoint as ws_router
 
@@ -43,6 +45,15 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# CORS — allow game clients (desktop, web) and local dev.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.include_router(auth_router.router)
 app.include_router(me_router.router)
 app.include_router(report_router.router)
@@ -52,6 +63,13 @@ app.include_router(ws_router.router)
 
 @app.get("/healthz", tags=["ops"])
 def health_check():
+    """Liveness probe. Verifies the DB connection pool is healthy."""
+    try:
+        db = SessionLocal()
+        db.execute(text("SELECT 1"))
+        db.close()
+    except Exception:
+        return {"status": "degraded", "db": "unreachable"}
     return {"status": "ok"}
 
 
