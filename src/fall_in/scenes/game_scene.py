@@ -7,7 +7,7 @@ animations on a 4-row isometric board.
 
 import random
 from enum import Enum, auto
-from typing import Optional
+from typing import Callable, Optional
 
 import pygame
 
@@ -22,7 +22,7 @@ from fall_in.utils.danger_utils import (
 )
 from fall_in.utils.text_utils import draw_outlined_text
 from fall_in.core.card import Card
-from fall_in.core.player import create_players
+from fall_in.core.player import Player, PlayerType, create_players
 from fall_in.core.rules import GameRules, TurnResult
 from fall_in.ai.ai_player import create_ai_players
 from fall_in.entities.soldier_figure import SoldierFigure
@@ -168,6 +168,49 @@ class GameScene(Scene, DebugOverlayMixin):
         # Settings gear button (top-right corner)
         self._settings_btn_center = (SCREEN_WIDTH - 230, 30)
         self._settings_btn_radius = 18
+
+        # Emote popup (PR-07) — palette that opens on player icon click.
+        # Wire the send-side by calling set_emote_send_callback() after
+        # construction.  In single-player the palette opens but does nothing.
+        from fall_in.ui.emote_popup import EmotePopup
+
+        self._emote_popup = EmotePopup()
+        # Route emote button clicks through _on_emote_selected so the scene
+        # can own the send logic rather than the popup itself.
+        self._emote_popup.set_callback(self._on_emote_selected)
+        # External send callback — set by the networking layer for multiplayer.
+        self._emote_send_callback: Optional[Callable[[str], None]] = None
+        self._card_select_callback: Optional[Callable[[int], None]] = None
+
+        # Player icon position — matches _draw_player_icon_ui()
+        self._player_icon_center = (SCREEN_WIDTH - 170, UI_TOP_BAR_Y + 20)
+        self._player_icon_radius = 28
+
+        # Per-seat emote display state: seat_index → (emote_label, ttl_seconds)
+        # Populated from RemoteGameAdapter in multiplayer (drained in update()),
+        # or directly via show_emote() in single-player / tests.
+        self._emote_display: dict[int, tuple[str, float]] = {}
+        # Display duration for each received emote (seconds)
+        self._emote_display_duration: float = 3.0
+
+        # RemoteGameAdapter for multiplayer — set by the networking layer.
+        # When set, update() drains pending emotes from it each frame.
+        self._remote_adapter: Optional[object] = None  # RemoteGameAdapter
+
+        # Optional network tick callback — set by the multiplayer bootstrap.
+        # Called once per frame (before emote drain) so the networking layer
+        # can pump the WS client and route incoming messages to the adapter.
+        # TODO (PR-09 WS client bootstrap): set via set_network_tick_callback().
+        self._network_tick_callback: Optional[Callable[[], None]] = None
+        self._remote_reveal_step_timer = 0.0
+        self._remote_reveal_step_duration = 0.42
+        self._remote_current_reveal_seat: Optional[int] = None
+        self._remote_round_result: Optional[dict] = None
+        self._remote_round_result_timer = 0.0
+        self._remote_round_result_acknowledged = False
+        self._remote_selection_sent_pending = False
+        self._round_ready_callback: Optional[Callable[[], None]] = None
+        self._exit_match_callback: Optional[Callable[[], None]] = None
 
         # Timeout SFX (plays every second when timer <= 5)
         from fall_in.config import SOUNDS_DIR
@@ -369,14 +412,14 @@ class GameScene(Scene, DebugOverlayMixin):
 
     def _draw_board(self, screen: pygame.Surface) -> None:
         """Draw the isometric game board with soldier figures."""
-        board = self.rules.board
+        board_rows = self._get_display_board_rows()
 
         # Collect all tiles with depth for proper z-ordering
         tiles_to_draw = []
         for row_idx in range(NUM_ROWS):
             for col in range(MAX_CARDS_PER_ROW + 1):
                 visual_col = MAX_CARDS_PER_ROW - col
-                row = board.rows[row_idx]
+                row = board_rows[row_idx] if row_idx < len(board_rows) else []
 
                 tile_type = (
                     get_tile_type_by_danger(row[col].danger)
@@ -394,7 +437,7 @@ class GameScene(Scene, DebugOverlayMixin):
         # Draw soldier figures (sorted by depth)
         soldiers_to_draw = []
         for row_idx in range(NUM_ROWS):
-            row = board.rows[row_idx]
+            row = board_rows[row_idx] if row_idx < len(board_rows) else []
             for col in range(len(row)):
                 visual_col = MAX_CARDS_PER_ROW - col
                 card = row[col]
@@ -411,6 +454,578 @@ class GameScene(Scene, DebugOverlayMixin):
             else:
                 figure = self.soldier_figures[card.number]
             figure.render(screen, iso_x, iso_y, int(ISO_TILE_HEIGHT))
+
+    def _to_display_card(self, card_like) -> Card:
+        """
+        Convert a network DTO or local Card into a renderable Card object.
+
+        Multiplayer public/private state carries only number + danger.
+        We enrich the Card with the local player's collection state so that
+        collected soldiers display their individual portrait and info.
+        Each player sees cards based on their own collection — a soldier
+        collected by player A but not player B will appear collected only
+        on A's screen.
+        """
+        if isinstance(card_like, Card):
+            return card_like
+
+        from fall_in.data.soldier_data import get_soldier_manager
+
+        number = card_like.number
+        danger = card_like.danger
+        manager = get_soldier_manager()
+        soldier = manager.get_soldier(number)
+        if soldier is not None and soldier.is_collected:
+            return Card(
+                number=number,
+                danger=danger,
+                is_collected=True,
+                name=soldier.name,
+                rank=soldier.rank,
+                unit=soldier.unit,
+                note=soldier.note,
+                body_type=soldier.body_type,
+            )
+        return Card(number=number, danger=danger)
+
+    def _get_public_state(self):
+        """Return the latest multiplayer public state, or None in single-player."""
+        if self._remote_adapter is None:
+            return None
+        return self._remote_adapter.get_public_state()
+
+    def _get_private_state(self):
+        """Return the latest multiplayer private hand state, or None if unavailable."""
+        if self._remote_adapter is None:
+            return None
+        return self._remote_adapter.get_private_state()
+
+    def _get_display_board_rows(self) -> list[list[Card]]:
+        """Return board rows suitable for rendering in local or remote play."""
+        public = self._get_public_state()
+        if public is None:
+            return self.rules.board.rows
+        return [
+            [self._to_display_card(card) for card in row] for row in public.board_rows
+        ]
+
+    def _get_display_hand_cards(self) -> list[Card]:
+        """Return the local player's visible hand for the current mode."""
+        private = self._get_private_state()
+        if private is None:
+            return self.human_player.hand
+        cards = [self._to_display_card(card) for card in private.hand]
+        # The server keeps the selected card in the hand until turn resolution.
+        # Hide it from the display once the selection has been confirmed so the
+        # player doesn't see a ghost card (especially on the last turn).
+        selected_num = getattr(self, "_last_remote_selected_card_number", None)
+        if selected_num is not None and private.has_selected:
+            cards = [c for c in cards if c.number != selected_num]
+        return cards
+
+    def _get_round_number(self) -> int:
+        """Return the authoritative round number for the current mode."""
+        public = self._get_public_state()
+        if public is not None:
+            return public.round_number
+        return self.rules.round_state.round_number
+
+    def _get_local_committed_score(self) -> int:
+        """Return the committed danger score for the local seat."""
+        public = self._get_public_state()
+        if public is not None:
+            return public.committed_scores.get(self._get_my_seat(), 0)
+        return self.rules.get_player_committed_score(self.human_player)
+
+    def _get_local_round_penalty_card_count(self) -> int:
+        """Return the local player's penalty-card count for this round."""
+        if self._remote_adapter is not None:
+            return self._remote_adapter.get_round_penalty_card_count(
+                self._get_my_seat()
+            )
+        try:
+            return int(self.rules.get_player_round_penalty_count(self.human_player))
+        except Exception:
+            return 0
+
+    def _consume_selection_timer(
+        self, dt: float, *, on_timeout: Optional[Callable[[], None]]
+    ) -> bool:
+        """
+        Advance the selection timer with hitch protection.
+
+        Large frame spikes can otherwise chew through most of the timer in one
+        update and make the turn look like it expired early.
+        """
+        timer_dt = max(0.0, min(float(dt), 0.25))
+        self.turn_timer = max(0.0, self.turn_timer - timer_dt)
+        if self.turn_timer <= 5.0 and self._timeout_sfx is not None:
+            current_tick = int(self.turn_timer)
+            if current_tick != self._last_timeout_tick and self.turn_timer > 0:
+                self._last_timeout_tick = current_tick
+                self._timeout_sfx.play()
+        if self.turn_timer > 0:
+            return False
+        self._last_timeout_tick = -1
+        if on_timeout is not None:
+            on_timeout()
+            return True
+        return False
+
+    def _get_player_order_entries(self) -> list[tuple[str, bool]]:
+        """
+        Return player-order labels for the current mode.
+
+        Each item is ``(label, is_local_player)``.
+        """
+        public = self._get_public_state()
+        if public is None:
+            entries = []
+            for player in self.rules.player_order:
+                entries.append(
+                    (
+                        "나"
+                        if player == self.human_player
+                        else player.name.replace("AI ", ""),
+                        player == self.human_player,
+                    )
+                )
+            return entries
+
+        my_seat = self._get_my_seat()
+        entries = []
+        for seat_index in public.player_order_seats:
+            if seat_index == my_seat:
+                entries.append(("나", True))
+            else:
+                entries.append((str(seat_index + 1), False))
+        return entries
+
+    def _get_multiplayer_display_name(self, seat_index: int) -> str:
+        """Return the display name for a multiplayer seat (nickname or AI name)."""
+        public = self._get_public_state()
+        if public is None:
+            return f"P{seat_index + 1}"
+        seat = public.get_seat(seat_index)
+        if seat is None:
+            return f"P{seat_index + 1}"
+        return seat.display_name or f"P{seat_index + 1}"
+
+    def _advance_remote_reveal(self, dt: float) -> None:
+        if self._remote_adapter is None:
+            return
+
+        # Update running penalty tweens.
+        if self.penalty_cards_animating:
+            if self.penalty_tweens.update(dt):
+                self.penalty_cards_animating.clear()
+
+        if self._remote_reveal_step_timer > 0:
+            self._remote_reveal_step_timer = max(
+                0.0, self._remote_reveal_step_timer - dt
+            )
+            if self._remote_reveal_step_timer > 0:
+                return
+
+        next_step = self._remote_adapter.pop_next_reveal_step()
+        if next_step is not None:
+            step, snapshot = next_step
+            self._remote_adapter.apply_public_state(snapshot)
+            self._remote_current_reveal_seat = step.seat_index
+            actor = (
+                "나"
+                if step.seat_index == self._get_my_seat()
+                else self._get_multiplayer_display_name(step.seat_index)
+            )
+            self.message = f"{actor}: #{step.card_number}"
+
+            if step.penalty_score > 0 and step.penalty_card_count > 0:
+                # Extend the reveal timer to allow the penalty animation to play.
+                anim_duration = 0.4 + step.penalty_card_count * 0.1
+                self._remote_reveal_step_timer = (
+                    self._remote_reveal_step_duration + anim_duration
+                )
+                self.message_timer = self._remote_reveal_step_timer
+                self._start_remote_penalty_animation(step)
+            else:
+                self._remote_reveal_step_timer = self._remote_reveal_step_duration
+                self.message_timer = self._remote_reveal_step_duration
+            return
+
+        if not self._remote_adapter.is_turn_reveal_active():
+            self._remote_current_reveal_seat = None
+            for state in self._remote_adapter.flush_post_reveal_public_states():
+                self._remote_adapter.apply_public_state(state)
+
+    def _start_remote_penalty_animation(self, step) -> None:
+        """Start penalty card animation for a multiplayer reveal step."""
+        from types import SimpleNamespace
+
+        self.penalty_cards_animating.clear()
+        self.penalty_tweens = TweenGroup()
+
+        my_seat = self._get_my_seat()
+        other_seats = self._get_other_seat_order()
+
+        if step.seat_index == my_seat:
+            target_x, target_y = ICON_HANGER_X + 48, UI_TOP_BAR_Y + 18
+        elif step.seat_index in other_seats:
+            panel_index = other_seats.index(step.seat_index)
+            panel_w, panel_h = 200, 70
+            panel_spacing = 10
+            panel_count = len(other_seats)
+            total_h = panel_count * panel_h + max(0, panel_count - 1) * panel_spacing
+            panel_area_top = UI_TOP_BAR_HEIGHT + 10
+            panel_area_bottom = SCREEN_HEIGHT - 220
+            panel_start_y = (
+                panel_area_top + (panel_area_bottom - panel_area_top - total_h) // 2
+            )
+            panel_x = SCREEN_WIDTH - panel_w - 10
+            target_x = panel_x + panel_w // 2
+            target_y = (
+                panel_start_y + panel_index * (panel_h + panel_spacing) + panel_h // 2
+            )
+        else:
+            target_x, target_y = SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2
+
+        for i in range(step.penalty_card_count):
+            tween = Tween(
+                start=(BOARD_OFFSET_X, BOARD_OFFSET_Y + 50),
+                end=(target_x, target_y),
+                duration=0.4 + i * 0.1,
+                easing="ease_in",
+            )
+            proxy_card = SimpleNamespace(
+                number=step.card_number, danger=step.card_danger
+            )
+            self.penalty_cards_animating.append((proxy_card, tween))
+            self.penalty_tweens.add(tween)
+
+        if step.seat_index == my_seat:
+            self.commander.say_penalty_taken()
+
+    def _has_remote_round_result_overlay(self) -> bool:
+        return getattr(self, "_remote_round_result", None) is not None
+
+    def _is_remote_reveal_in_progress(self) -> bool:
+        if self._remote_adapter is None:
+            return False
+        if getattr(self, "_remote_current_reveal_seat", None) is not None:
+            return True
+        has_pending = getattr(self._remote_adapter, "has_pending_reveal_steps", None)
+        if callable(has_pending) and has_pending():
+            return True
+        is_active = getattr(self._remote_adapter, "is_turn_reveal_active", None)
+        if callable(is_active) and is_active():
+            return True
+        return getattr(self, "_remote_reveal_step_timer", 0.0) > 0
+
+    def _is_local_player_eliminated(self) -> bool:
+        """Return True when the local seat is eliminated in multiplayer."""
+        private = self._get_private_state()
+        if private is None:
+            return False
+        return private.is_eliminated
+
+    def _can_interact_with_cards(self) -> bool:
+        if self._remote_adapter is None:
+            return self.phase == GamePhase.SELECTING
+
+        if self._is_local_player_eliminated():
+            return False
+        public = self._get_public_state()
+        if public is None or public.phase != "SELECTING":
+            return False
+        if self._has_remote_round_result_overlay():
+            return False
+        if self._is_remote_reveal_in_progress():
+            return False
+        return not self._is_waiting_for_other_players()
+
+    def _is_waiting_for_other_players(self) -> bool:
+        if self._remote_adapter is None:
+            return False
+        public = self._get_public_state()
+        private = self._get_private_state()
+        if public is None or public.phase != "SELECTING":
+            return False
+        if self._has_remote_round_result_overlay():
+            return False
+        if private is not None and private.has_selected:
+            return True
+        return bool(getattr(self, "_remote_selection_sent_pending", False))
+
+    def _should_show_selection_ui(self) -> bool:
+        if self._remote_adapter is None:
+            return self.phase == GamePhase.SELECTING
+        if self._is_local_player_eliminated():
+            return False
+        public = self._get_public_state()
+        return (
+            public is not None
+            and public.phase == "SELECTING"
+            and not self._has_remote_round_result_overlay()
+            and not self._is_remote_reveal_in_progress()
+        )
+
+    def _start_remote_round_result(self, data: dict) -> None:
+        normalised = dict(data)
+        normalised["round_danger"] = {
+            int(seat_index): int(value)
+            for seat_index, value in (data.get("round_danger") or {}).items()
+        }
+        normalised["total_scores"] = {
+            int(seat_index): int(value)
+            for seat_index, value in (data.get("total_scores") or {}).items()
+        }
+        normalised["eliminated_seats"] = [
+            int(seat) for seat in data.get("eliminated_seats", [])
+        ]
+        self._remote_round_result = normalised
+        self._remote_round_result_timer = float(data.get("timeout_seconds", 0))
+        self._remote_round_result_acknowledged = False
+        self._remote_selection_sent_pending = False
+        self.selected_card_index = None
+        self.message = ""
+        self.message_timer = 0.0
+
+    def _clear_remote_round_result(self) -> None:
+        self._remote_round_result = None
+        self._remote_round_result_timer = 0.0
+        self._remote_round_result_acknowledged = False
+
+    def _confirm_remote_round_result(self) -> None:
+        if not self._has_remote_round_result_overlay():
+            return
+        if self._remote_round_result_acknowledged:
+            return
+        self._remote_round_result_acknowledged = True
+        if self._round_ready_callback is not None:
+            self._round_ready_callback()
+
+    def _reset_remote_selecting_phase(
+        self, remaining_time: float = TURN_TIMEOUT_SECONDS
+    ) -> None:
+        """Reset transient local UI state when the server enters SELECTING."""
+        self.turn_timer = remaining_time
+        self._last_timeout_tick = -1
+        self.selected_card_index = None
+        self._remote_selection_sent_pending = False
+        self._last_remote_selected_card_number = None
+        self._clear_remote_round_result()
+        # Reset penalty counters when the round number advances so stale
+        # counts from the previous round don't linger on turn 1.
+        if self._remote_adapter is not None:
+            public = self._remote_adapter.get_public_state()
+            if public is not None:
+                current_round = public.round_number
+                prev_round = getattr(self, "_last_penalty_reset_round", 0)
+                if current_round != prev_round:
+                    self._remote_adapter.reset_round_penalty_counts()
+                    self._last_penalty_reset_round = current_round
+                    # Clear soldier figures so cards from the new deck get
+                    # fresh drop animations (same numbers reused across rounds).
+                    if hasattr(self, "soldier_figures"):
+                        self.soldier_figures.clear()
+
+    def _enter_remote_result_scene(self, round_result: dict) -> None:
+        """Switch to the shared ResultScene for multiplayer round settlement."""
+        public = self._get_public_state()
+        if public is None or self._remote_adapter is None:
+            return
+
+        from fall_in.core.game_manager import GameManager, GameState
+        from fall_in.scenes.result_scene import ResultScene
+
+        gm = GameManager()
+        gm.state = GameState.RESULT
+        gm.change_scene(
+            ResultScene.from_remote(
+                round_result=round_result,
+                public_state=public,
+                remote_adapter=self._remote_adapter,
+                resume_scene=self,
+                network_tick_callback=self._network_tick_callback,
+                round_ready_callback=self._round_ready_callback,
+            )
+        )
+
+    def _update_remote_match_flow(self, dt: float) -> bool:
+        if self._remote_adapter is None:
+            return False
+
+        # Handle server-side SELECTION_TIMEOUT events FIRST, before
+        # consuming PHASE_SELECTING.  When the server times out, it sends
+        # SELECTION_TIMEOUT, resolves the turn, and immediately broadcasts
+        # PHASE_SELECTING for the next turn — all in one pump batch.
+        # Processing the timeout first lets the subsequent PHASE_SELECTING
+        # reset cleanly override the stale state (pending flag, timer=0).
+        pop_timeout = getattr(self._remote_adapter, "pop_selection_timeout", None)
+        if callable(pop_timeout):
+            timed_out_seats = pop_timeout()
+            if timed_out_seats is not None:
+                my_seat = self._get_my_seat()
+                if my_seat in timed_out_seats:
+                    self.message = "시간 초과! 자동 선택됨"
+                    self.message_timer = 1.0
+                    self._remote_selection_sent_pending = True
+                self.turn_timer = 0.0
+
+        consume_selecting = getattr(
+            self._remote_adapter, "consume_selecting_phase_started", None
+        )
+        if callable(consume_selecting):
+            remaining = consume_selecting()
+            while remaining is not None:
+                self._reset_remote_selecting_phase(remaining)
+                remaining = consume_selecting()
+
+        if not self._is_remote_reveal_in_progress():
+            pop_round_result = getattr(self._remote_adapter, "pop_round_result", None)
+            if callable(pop_round_result):
+                round_result = pop_round_result()
+                if round_result is not None:
+                    self._enter_remote_result_scene(round_result)
+                    return True
+
+        pop_match_result = getattr(self._remote_adapter, "pop_match_result", None)
+        if callable(pop_match_result):
+            match_result = pop_match_result()
+            if match_result is not None:
+                self._clear_remote_round_result()
+                self._go_to_remote_game_over(match_result)
+                return True
+
+        # Always consume the selection timer when in SELECTING phase so it
+        # stays in sync with the server's 30-second timeout.  Previously the
+        # timer was paused during reveal animations, causing drift where the
+        # server would auto-select while the client still showed time left.
+        # Eliminated players skip the timer entirely — they are spectators.
+        public = self._get_public_state()
+        in_selecting = (
+            public is not None
+            and public.phase == "SELECTING"
+            and not self._has_remote_round_result_overlay()
+            and not self._is_local_player_eliminated()
+        )
+        if in_selecting:
+            self._consume_selection_timer(dt, on_timeout=self._remote_auto_select_card)
+        else:
+            self._last_timeout_tick = -1
+
+        if self._has_remote_round_result_overlay():
+            self._remote_round_result_timer = max(
+                0.0, self._remote_round_result_timer - dt
+            )
+        return False
+
+    def _build_remote_game_over_players(
+        self, match_result: dict
+    ) -> tuple[Optional[Player], list[Player]]:
+        public = self._get_public_state()
+        if public is None:
+            return None, []
+
+        my_seat = self._get_my_seat()
+        final_scores = {
+            int(seat_index): int(value)
+            for seat_index, value in (match_result.get("final_scores") or {}).items()
+        }
+        players: list[Player] = []
+        for seat in sorted(public.seats, key=lambda s: s.seat_index):
+            player = Player(
+                name=seat.display_name,
+                player_type=PlayerType.HUMAN
+                if seat.seat_index == my_seat
+                else PlayerType.AI,
+                player_id=seat.seat_index,
+            )
+            player.penalty_score = int(
+                final_scores.get(
+                    seat.seat_index, public.committed_scores.get(seat.seat_index, 0)
+                )
+            )
+            player.is_eliminated = player.penalty_score >= GAME_OVER_SCORE
+            players.append(player)
+
+        winner_seat = match_result.get("winner_seat")
+        if winner_seat is not None:
+            winner_seat = int(winner_seat)
+        winner = next(
+            (player for player in players if player.player_id == winner_seat), None
+        )
+        return winner, players
+
+    def _go_to_remote_game_over(self, match_result: dict) -> None:
+        winner, players = self._build_remote_game_over_players(match_result)
+        if not players:
+            return
+
+        # Extract per-seat reward granted by the server.
+        my_seat = self._get_my_seat()
+        rewards = match_result.get("rewards") or {}
+        my_reward = int(rewards.get(str(my_seat), rewards.get(my_seat, 0)))
+
+        from fall_in.core.game_manager import GameManager, GameState
+        from fall_in.scenes.game_over_scene import GameOverScene
+
+        gm = GameManager()
+        gm.clear_pending_match_reconnect()
+        gm.state = GameState.GAMEOVER
+        gm.change_scene(
+            GameOverScene(
+                winner=winner,
+                players=players,
+                round_number=self._get_round_number(),
+                multiplayer_reward=my_reward,
+            )
+        )
+
+    def _handle_exit_match(self) -> None:
+        """Handle voluntary exit from a multiplayer match."""
+        is_eliminated = self._is_local_player_eliminated()
+
+        # Send MATCH_LEAVE to server
+        if self._exit_match_callback is not None:
+            self._exit_match_callback()
+
+        # Build a minimal player list for GameOverScene
+        from fall_in.core.game_manager import GameManager, GameState
+        from fall_in.scenes.game_over_scene import GameOverScene
+
+        public = self._get_public_state()
+        my_seat = self._get_my_seat()
+        players: list[Player] = []
+
+        if public is not None:
+            for seat in sorted(public.seats, key=lambda s: s.seat_index):
+                player = Player(
+                    name=seat.display_name,
+                    player_type=PlayerType.HUMAN
+                    if seat.seat_index == my_seat
+                    else PlayerType.AI,
+                    player_id=seat.seat_index,
+                )
+                player.penalty_score = int(
+                    public.committed_scores.get(seat.seat_index, 0)
+                )
+                players.append(player)
+        else:
+            # Fallback: create a single human player
+            player = Player(name="", player_type=PlayerType.HUMAN, player_id=my_seat)
+            players.append(player)
+
+        gm = GameManager()
+        gm.clear_pending_match_reconnect()
+        gm.state = GameState.GAMEOVER
+        gm.change_scene(
+            GameOverScene(
+                winner=None,
+                players=players,
+                round_number=self._get_round_number(),
+                early_exit=not is_eliminated,
+            )
+        )
 
     # ------------------------------------------------------------------
     # UI drawing
@@ -457,7 +1072,7 @@ class GameScene(Scene, DebugOverlayMixin):
             # Draw round number centered on the badge
             round_num_font = get_font(20, "bold")
             round_text = round_num_font.render(
-                f"ROUND {self.rules.round_state.round_number}", True, WHITE
+                f"ROUND {self._get_round_number()}", True, WHITE
             )
             round_rect = round_text.get_rect(
                 center=(badge_x + badge_w // 2, badge_y + badge_h // 2)
@@ -466,7 +1081,7 @@ class GameScene(Scene, DebugOverlayMixin):
         else:
             draw_outlined_text(
                 screen,
-                f"ROUND {self.rules.round_state.round_number}",
+                f"ROUND {self._get_round_number()}",
                 title_font,
                 (20, top_y),
                 WHITE,
@@ -490,15 +1105,12 @@ class GameScene(Scene, DebugOverlayMixin):
             pygame.draw.polygon(screen, LIGHT_BLUE, hangar_points)
             pygame.draw.polygon(screen, WHITE, hangar_points, width=2)
 
-        cards_taken = self.rules.get_player_round_penalty_count(self.human_player)
-        draw_outlined_text(
-            screen,
-            str(cards_taken),
-            font,
-            (hangar_x + 22, top_y + 25),
-            WHITE,
-            AIR_FORCE_BLUE,
-        )
+        cards_taken = self._get_local_round_penalty_card_count()
+        badge_center = (hangar_x + 48, top_y + 18)
+        pygame.draw.circle(screen, AIR_FORCE_BLUE, badge_center, 12)
+        pygame.draw.circle(screen, WHITE, badge_center, 12, 2)
+        count_text = mini_font.render(str(cards_taken), True, WHITE)
+        screen.blit(count_text, count_text.get_rect(center=badge_center))
 
         # Danger color legend below UI bar
         legend_y = UI_TOP_BAR_HEIGHT + 3
@@ -539,49 +1151,57 @@ class GameScene(Scene, DebugOverlayMixin):
         )
 
         order_x = UI_ELEMENT_PLAYER_ORDER_X
-        for i, player in enumerate(self.rules.player_order):
-            name = (
-                "나" if player == self.human_player else player.name.replace("AI ", "")
-            )
-            color = DANGER_SAFE if player == self.human_player else LIGHT_BLUE
+        order_entries = self._get_player_order_entries()
+        for i, (name, is_local_player) in enumerate(order_entries):
+            label = name
+            color = DANGER_SAFE if is_local_player else LIGHT_BLUE
 
-            is_current = (
-                self.current_placement
-                and self.current_placement.player == player
-                and self.phase
-                in [GamePhase.PLACING_PLAYER, GamePhase.PENALTY_ANIMATION]
-            )
+            is_current = False
+            if self._remote_adapter is None:
+                player = self.rules.player_order[i]
+                is_current = (
+                    self.current_placement
+                    and self.current_placement.player == player
+                    and self.phase
+                    in [GamePhase.PLACING_PLAYER, GamePhase.PENALTY_ANIMATION]
+                )
+            elif self._remote_current_reveal_seat is not None:
+                public = self._get_public_state()
+                if public is not None and i < len(public.player_order_seats):
+                    is_current = (
+                        public.player_order_seats[i] == self._remote_current_reveal_seat
+                    )
 
             if is_current:
                 pygame.draw.rect(
                     screen,
                     DANGER_WARNING,
-                    (order_x - 2, order_y - 2, 20, 16),
+                    (order_x - 4, order_y - 2, 24, 16),
                     border_radius=3,
                 )
 
             draw_outlined_text(
                 screen,
-                name,
+                label,
                 mini_font,
                 (order_x, order_y),
                 WHITE if is_current else color,
                 TOP_BAR_OUTLINE_COLOR,
             )
 
-            if i < len(self.rules.player_order) - 1:
+            if i < len(order_entries) - 1:
                 draw_outlined_text(
                     screen,
                     "→",
                     mini_font,
-                    (order_x + 14, order_y),
+                    (order_x + 18, order_y),
                     LIGHT_BLUE,
                     TOP_BAR_OUTLINE_COLOR,
                 )
-            order_x += 28
+            order_x += 38
 
         # Danger gauge (center-right)
-        committed = self.rules.get_player_committed_score(self.human_player)
+        committed = self._get_local_committed_score()
         gauge_x = SCREEN_WIDTH // 2 + 50
 
         # Danger warning icon
@@ -665,39 +1285,58 @@ class GameScene(Scene, DebugOverlayMixin):
         self._draw_player_icon_ui(screen, top_y)
 
         # === OTHER PLAYERS (Right sidebar, center-right aligned) ===
-        other_players = self.players[1:]
+        # Single-player: iterate Player objects directly (original approach).
+        # Multiplayer: use server-state dicts from _get_other_player_panels().
+        if self._remote_adapter is None:
+            other_players = self.players[1:]
+        else:
+            other_players = []
+
+        mp_panel_data = (
+            self._get_other_player_panels() if self._remote_adapter is not None else []
+        )
+
+        panel_count = (
+            len(other_players) if self._remote_adapter is None else len(mp_panel_data)
+        )
         panel_w, panel_h = 200, 70
         panel_spacing = 10
         total_panels_height = (
-            len(other_players) * panel_h + (len(other_players) - 1) * panel_spacing
+            panel_count * panel_h + max(0, panel_count - 1) * panel_spacing
         )
-        # Vertically center panels in the playfield area (below top bar, above hand)
         panel_area_top = UI_TOP_BAR_HEIGHT + 10
-        panel_area_bottom = SCREEN_HEIGHT - 220  # above hand cards area
+        panel_area_bottom = SCREEN_HEIGHT - 220
         panel_start_y = (
             panel_area_top
             + (panel_area_bottom - panel_area_top - total_panels_height) // 2
         )
         panel_x = SCREEN_WIDTH - panel_w - 10
 
-        for i, player in enumerate(other_players):
+        _panel_iter = other_players if self._remote_adapter is None else mp_panel_data
+        for i, panel_item in enumerate(_panel_iter):
             p_rect = pygame.Rect(
                 panel_x, panel_start_y + i * (panel_h + panel_spacing), panel_w, panel_h
             )
 
             # Panel background
+            if self._remote_adapter is None:
+                player = panel_item
+                is_elim = player.is_eliminated
+            else:
+                pdata = panel_item
+                is_elim = pdata.get("is_eliminated", False)
             if "player_panel" in self._hud_images:
                 panel_img = pygame.transform.smoothscale(
                     self._hud_images["player_panel"], (p_rect.width, p_rect.height)
                 )
-                if player.is_eliminated:
+                if is_elim:
                     tint = pygame.Surface(panel_img.get_size(), pygame.SRCALPHA)
                     tint.fill((180, 40, 40, 100))
                     panel_img = panel_img.copy()
                     panel_img.blit(tint, (0, 0))
                 screen.blit(panel_img, p_rect.topleft)
             else:
-                bg_color = DANGER_DANGER if player.is_eliminated else LIGHT_BLUE
+                bg_color = DANGER_DANGER if is_elim else LIGHT_BLUE
                 pygame.draw.rect(screen, bg_color, p_rect, border_radius=6)
                 pygame.draw.rect(
                     screen, AIR_FORCE_BLUE, p_rect, width=2, border_radius=6
@@ -754,21 +1393,35 @@ class GameScene(Scene, DebugOverlayMixin):
 
             # Text info (right of avatar)
             text_x = avatar_cx + avatar_radius + 6
-            order_pos = self.rules.get_player_order_position(player)
+            if self._remote_adapter is None:
+                order_pos = self.rules.get_player_order_position(player)
+                p_name = player.name
+                p_committed = self.rules.get_player_committed_score(player)
+                p_cards = self.rules.get_player_round_penalty_count(player)
+                p_status = ""
+            else:
+                order_pos = pdata.get("order_pos", 0)
+                p_name = pdata.get("name", "?")
+                p_committed = pdata.get("committed", 0)
+                p_cards = pdata.get("penalty", 0)
+                p_status = pdata.get("status", "")
             screen.blit(
-                small_font.render(f"{order_pos}.{player.name}", True, WHITE),
+                small_font.render(f"{order_pos}.{p_name}", True, WHITE),
                 (text_x, p_rect.y + 8),
             )
 
-            p_committed = self.rules.get_player_committed_score(player)
             screen.blit(
                 mini_font.render(f"위험: {p_committed}", True, WHITE),
                 (text_x, p_rect.y + 28),
             )
 
-            p_cards = self.rules.get_player_round_penalty_count(player)
+            meta_text = f"벌칙: {p_cards}장"
+            meta_color = WHITE
+            if p_status:
+                meta_text = f"{meta_text}  ·  {p_status}"
+                meta_color = DANGER_WARNING if p_status == "재접속 중" else LIGHT_BLUE
             screen.blit(
-                mini_font.render(f"벌칙: {p_cards}장", True, WHITE),
+                mini_font.render(meta_text, True, meta_color),
                 (text_x, p_rect.y + 45),
             )
 
@@ -836,6 +1489,9 @@ class GameScene(Scene, DebugOverlayMixin):
                 )
             screen.blit(msg_surface, msg_rect)
 
+        # Emote display — floating emoji badges above player panels (PR-07)
+        self._draw_emote_display(screen, panel_x, panel_start_y, panel_h, panel_spacing)
+
         # Phase indicator
         phase_text = small_font.render(
             f"[{self._get_phase_text()}]", True, AIR_FORCE_BLUE
@@ -900,6 +1556,28 @@ class GameScene(Scene, DebugOverlayMixin):
 
     def _get_phase_text(self) -> str:
         """Get current phase description in Korean."""
+        if self._has_remote_round_result_overlay():
+            return "라운드 정산"
+
+        public = self._get_public_state()
+        if public is not None:
+            has_pending_reveal = False
+            if self._remote_adapter is not None:
+                has_pending = getattr(
+                    self._remote_adapter, "has_pending_reveal_steps", None
+                )
+                if callable(has_pending):
+                    has_pending_reveal = has_pending()
+            if self._remote_current_reveal_seat is not None or has_pending_reveal:
+                return "카드 배치"
+            remote_phase_texts = {
+                "SELECTING": "카드 선택",
+                "PLACING": "카드 배치",
+                "ROUND_END": "라운드 종료",
+                "GAME_OVER": "게임 종료",
+            }
+            return remote_phase_texts.get(public.phase.upper(), public.phase)
+
         phase_texts = {
             GamePhase.STARTING: "라운드 시작",
             GamePhase.SELECTING: "카드 선택",
@@ -914,12 +1592,180 @@ class GameScene(Scene, DebugOverlayMixin):
         return phase_texts.get(self.phase, "")
 
     # ------------------------------------------------------------------
+    # Emote display
+    # ------------------------------------------------------------------
+
+    def _get_my_seat(self) -> int:
+        """Return the local player's seat index (0 in single-player, adapter.my_seat in multiplayer)."""
+        if self._remote_adapter is not None:
+            return self._remote_adapter.my_seat
+        return 0
+
+    def _get_other_seat_order(self) -> list[int]:
+        """
+        Return seat indices of all non-local seats, in the order they appear as
+        sidebar panels (ascending seat_index, skipping my seat).
+
+        Single-player: seats 1, 2, 3.
+        Multiplayer: sorted server seat indices excluding my_seat.
+        """
+        my_seat = self._get_my_seat()
+        if self._remote_adapter is not None:
+            public = self._remote_adapter.get_public_state()
+            if public:
+                return sorted(
+                    s.seat_index for s in public.seats if s.seat_index != my_seat
+                )
+        return [i for i in range(1, len(self.players))]
+
+    def _get_other_player_panels(self) -> list[dict]:
+        """
+        Build panel data list for the right sidebar.
+
+        In single-player mode: uses local GameRules data.
+        In multiplayer mode: uses RemoteGameAdapter public state so that the
+        server-authoritative names and scores are shown.
+        """
+        if self._remote_adapter is None:
+            # Single-player — local rules
+            panels: list[dict] = []
+            for i, p in enumerate(self.players[1:]):
+                try:
+                    panels.append(
+                        {
+                            "name": p.name,
+                            "committed": self.rules.get_player_committed_score(p),
+                            "penalty": self.rules.get_player_round_penalty_count(p),
+                            "order_pos": self.rules.get_player_order_position(p),
+                            "seat_index": i + 1,
+                            "is_eliminated": p.is_eliminated,
+                        }
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    import sys
+
+                    print(
+                        f"[PANEL] failed for player {p.name!r} (id={p.player_id}): {exc}",
+                        file=sys.stderr,
+                    )
+                    panels.append(
+                        {
+                            "name": p.name,
+                            "committed": 0,
+                            "penalty": 0,
+                            "order_pos": 0,
+                            "seat_index": i + 1,
+                            "is_eliminated": getattr(p, "is_eliminated", False),
+                        }
+                    )
+            return panels
+
+        # Multiplayer — server state
+        public = self._remote_adapter.get_public_state()
+        my_seat = self._remote_adapter.my_seat
+        if public is None:
+            return []
+
+        order = public.player_order_seats
+        scores = public.committed_scores
+        panels = []
+        for seat in sorted(public.seats, key=lambda s: s.seat_index):
+            if seat.seat_index == my_seat:
+                continue
+            order_pos = seat.seat_index + 1
+            committed = scores.get(seat.seat_index, 0)
+            # Eliminated: score >= 66 or removed from player order
+            is_elim = committed >= GAME_OVER_SCORE or (
+                seat.seat_index not in order and committed > 0
+            )
+            status = ""
+            if self._remote_adapter.is_seat_bot_takeover(seat.seat_index):
+                status = "BOT 대체"
+            elif self._remote_adapter.is_seat_disconnected(seat.seat_index):
+                status = "재접속 중"
+            panels.append(
+                {
+                    "name": seat.display_name,
+                    "committed": committed,
+                    "penalty": self._remote_adapter.get_round_penalty_card_count(
+                        seat.seat_index
+                    ),
+                    "order_pos": order_pos,
+                    "seat_index": seat.seat_index,
+                    "is_eliminated": is_elim,
+                    "status": status,
+                }
+            )
+        return panels
+
+    def _draw_emote_display(
+        self,
+        screen: pygame.Surface,
+        panel_x: int,
+        panel_start_y: int,
+        panel_h: int,
+        panel_spacing: int,
+    ) -> None:
+        """
+        Render floating emote badges near each player's UI element.
+
+        My seat  → below my player icon in the top bar (right side).
+        Other seats → to the LEFT of their sidebar panel so the badge
+                      doesn't obscure the panel content.
+
+        Seat mapping is relative to the local player's my_seat so that
+        multiplayer clients (seat != 0) are handled correctly.
+        """
+        if not self._emote_display:
+            return
+
+        emote_font = get_font(26)
+        my_seat = self._get_my_seat()
+        other_seats = self._get_other_seat_order()
+
+        for seat_index, (emoji, ttl) in self._emote_display.items():
+            alpha = 255
+            if ttl < 0.5:
+                alpha = int(255 * (ttl / 0.5))
+
+            if seat_index == my_seat:
+                # My emote: below the player icon in the top bar
+                cx, cy = self._player_icon_center
+                badge_cx = cx
+                badge_cy = cy + self._player_icon_radius + 20
+            elif seat_index in other_seats:
+                panel_index = other_seats.index(seat_index)
+                panel_top = panel_start_y + panel_index * (panel_h + panel_spacing)
+                panel_center_y = panel_top + panel_h // 2
+                # Badge to the LEFT of the panel, vertically centred
+                badge_cx = panel_x - 28
+                badge_cy = panel_center_y
+            else:
+                continue  # unknown seat — skip
+
+            emoji_surf = emote_font.render(emoji, True, WHITE)
+            emoji_surf.set_alpha(alpha)
+            emoji_rect = emoji_surf.get_rect(center=(badge_cx, badge_cy))
+
+            bg = pygame.Surface(
+                (emoji_rect.width + 10, emoji_rect.height + 6), pygame.SRCALPHA
+            )
+            pygame.draw.rect(
+                bg,
+                (0, 0, 0, min(alpha, 140)),
+                (0, 0, bg.get_width(), bg.get_height()),
+                border_radius=8,
+            )
+            screen.blit(bg, (emoji_rect.x - 5, emoji_rect.y - 3))
+            screen.blit(emoji_surf, emoji_rect)
+
+    # ------------------------------------------------------------------
     # Hand drawing
     # ------------------------------------------------------------------
 
     def _draw_hand(self, screen: pygame.Surface) -> None:
         """Draw player's hand cards in a fan layout at the bottom."""
-        hand = self.human_player.hand
+        hand = self._get_display_hand_cards()
         if not hand:
             return
 
@@ -995,7 +1841,7 @@ class GameScene(Scene, DebugOverlayMixin):
                 card,
                 x,
                 draw_y,
-                is_interviewed=card.is_collected,
+                is_interviewed=getattr(card, "is_collected", False),
                 is_selected=is_selected,
                 is_hovered=is_hovered,
                 rotation=rotation,
@@ -1008,9 +1854,30 @@ class GameScene(Scene, DebugOverlayMixin):
 
     def handle_event(self, event: pygame.event.Event) -> None:
         """Handle pygame events."""
+        if self._has_remote_round_result_overlay():
+            if event.type == pygame.KEYDOWN and event.key in (
+                pygame.K_SPACE,
+                pygame.K_RETURN,
+            ):
+                self._confirm_remote_round_result()
+                return
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                if self._get_round_ready_button_rect().collidepoint(event.pos):
+                    self._confirm_remote_round_result()
+            return
+
         # Settings popup consumes events when visible
         if self._settings_popup.handle_event(event):
             return
+
+        # Emote popup: forward non-click events (motion, keyboard) so that
+        # hover tracking and Escape-to-close work, but never block gameplay.
+        # Click events are handled inline in the MOUSEBUTTONDOWN block below
+        # so we can prevent the icon from immediately re-opening the palette
+        # when an outside click dismisses it.
+        if event.type != pygame.MOUSEBUTTONDOWN:
+            if self._emote_popup.handle_event(event):
+                return
 
         # Debug overlay handling (via mixin)
         if self.handle_debug_event(event):
@@ -1022,20 +1889,39 @@ class GameScene(Scene, DebugOverlayMixin):
                 return
             elif event.key == pygame.K_SPACE:
                 if (
-                    self.phase == GamePhase.SELECTING
+                    self._can_interact_with_cards()
                     and self.selected_card_index is not None
                 ):
                     self._confirm_card_selection()
 
         if event.type == pygame.MOUSEBUTTONDOWN:
-            # Settings gear button click
             mx, my = event.pos
+
+            # Emote popup gets first crack at clicks when it is open.
+            # If the click is outside the palette, the popup closes and returns
+            # False — we must NOT then check the player icon, or the palette
+            # would immediately re-open.
+            _popup_was_open = self._emote_popup.visible
+            if _popup_was_open:
+                if self._emote_popup.handle_event(event):
+                    return  # click consumed by palette button / frame
+                # Outside click: palette just closed — skip icon re-check but
+                # fall through so the click still reaches card selection.
+
+            # Settings gear button click
             sx, sy = self._settings_btn_center
             if ((mx - sx) ** 2 + (my - sy) ** 2) ** 0.5 <= self._settings_btn_radius:
                 self._settings_popup.toggle()
                 return
 
-        if self.phase == GamePhase.SELECTING:
+            # Player icon click → open emote palette (only when it was closed)
+            if not _popup_was_open:
+                ix, iy = self._player_icon_center
+                if ((mx - ix) ** 2 + (my - iy) ** 2) ** 0.5 <= self._player_icon_radius:
+                    self._emote_popup.show(self._player_icon_center)
+                    return
+
+        if self._can_interact_with_cards():
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 self._handle_card_click(event.pos)
             elif event.type == pygame.MOUSEMOTION and self.dragging:
@@ -1046,7 +1932,10 @@ class GameScene(Scene, DebugOverlayMixin):
 
     def _handle_card_click(self, pos: tuple[int, int]) -> None:
         """Handle clicking on a card in hand (fan layout)."""
-        hand = self.human_player.hand
+        if not self._can_interact_with_cards():
+            return
+
+        hand = self._get_display_hand_cards()
         if not hand:
             return
 
@@ -1082,8 +1971,26 @@ class GameScene(Scene, DebugOverlayMixin):
         """Confirm card selection and proceed to AI phase."""
         if self.selected_card_index is None:
             return
+        if self._remote_adapter is not None and not self._can_interact_with_cards():
+            return
 
-        card = self.human_player.hand[self.selected_card_index]
+        hand = self._get_display_hand_cards()
+        if not 0 <= self.selected_card_index < len(hand):
+            self.selected_card_index = None
+            return
+
+        card = hand[self.selected_card_index]
+
+        if self._remote_adapter is not None:
+            self.selected_card_index = None
+            if self._card_select_callback is not None:
+                self._remote_selection_sent_pending = True
+                self._last_remote_selected_card_number = card.number
+                self._card_select_callback(card.number)
+                self.message = "선택 완료"
+                self.message_timer = 0.6
+            return
+
         self.human_player.select_card(card)
         self.selected_card_index = None
 
@@ -1193,6 +2100,21 @@ class GameScene(Scene, DebugOverlayMixin):
             self.phase = GamePhase.AI_THINKING
             self.phase_timer = 0.3
 
+    def _remote_auto_select_card(self) -> None:
+        """Auto-select a random card in multiplayer when client timer expires."""
+        if self._is_waiting_for_other_players():
+            return
+        if self._is_local_player_eliminated():
+            return
+        hand = self._get_display_hand_cards()
+        if hand and self._card_select_callback is not None:
+            card = random.choice(hand)
+            self._remote_selection_sent_pending = True
+            self._last_remote_selected_card_number = card.number
+            self._card_select_callback(card.number)
+            self.message = "시간 초과! 자동 선택됨"
+            self.message_timer = 1.0
+
     def _go_to_result_scene(self) -> None:
         """Navigate to ResultScene for round settlement."""
         from fall_in.core.game_manager import GameManager
@@ -1204,10 +2126,204 @@ class GameScene(Scene, DebugOverlayMixin):
     # Update / Render
     # ------------------------------------------------------------------
 
+    def set_emote_send_callback(self, callback: Callable[[str], None]) -> None:
+        """
+        Register the function that transmits an emote to the server.
+
+        Called by the networking layer before the scene starts rendering.
+        In single-player this is never called; the palette opens but does
+        nothing when the player clicks an emote button.
+
+        Example (multiplayer setup)::
+
+            scene.set_emote_send_callback(ws_client.send_emote)
+
+        .. note::
+            TODO (PR-09 WS client bootstrap): call this during the multiplayer
+            scene setup after the WS connection is established, before the
+            first ``update()`` tick.
+        """
+        self._emote_send_callback = callback
+
+    def set_card_select_callback(self, callback: Callable[[int], None]) -> None:
+        """
+        Register the function that submits the chosen card number to the server.
+
+        Multiplayer uses this instead of mutating local GameRules state.
+        """
+        self._card_select_callback = callback
+
+    def set_round_ready_callback(self, callback: Callable[[], None]) -> None:
+        """Register the function that acknowledges the round-settlement screen."""
+        self._round_ready_callback = callback
+
+    def set_remote_adapter(self, adapter: object) -> None:
+        """
+        Attach a RemoteGameAdapter so that incoming EMOTE_BROADCAST messages
+        are consumed each frame and displayed via show_emote().
+
+        The adapter must expose ``pop_pending_emotes() -> list[(seat, emote_id)]``.
+        Call this once after the match starts and before the first update().
+
+        .. note::
+            TODO (PR-09 WS client bootstrap): call this during the multiplayer
+            scene setup, passing the ``RemoteGameAdapter`` instance that
+            receives ``EMOTE_BROADCAST`` messages from the server.
+        """
+        self._remote_adapter = adapter
+        # Disable the local-only opening round flow once the scene becomes
+        # server-authoritative. The actual match state now comes from the adapter.
+        self.phase = GamePhase.SELECTING
+        self.turn_timer = TURN_TIMEOUT_SECONDS
+        self.phase_timer = 0.0
+        self.message = ""
+        self.message_timer = 0.0
+        self._remote_selection_sent_pending = False
+        self._clear_remote_round_result()
+        self.dealing_cards.clear()
+        self.placement_queue.clear()
+        self.penalty_cards_animating.clear()
+        self.current_placement = None
+        self._remote_reveal_step_timer = 0.0
+        self._remote_current_reveal_seat = None
+
+        # Wire exit button in settings popup for multiplayer
+        self._settings_popup.set_exit_callback(self._handle_exit_match)
+
+    def set_network_tick_callback(self, callback: Callable[[], None]) -> None:
+        """
+        Register a zero-argument callable that is invoked once per frame from
+        update(), before emotes are drained from the remote adapter.
+
+        The networking layer uses this hook to pump the WsClient and route
+        incoming server messages (PHASE_SELECTING, PRIVATE_HAND_STATE,
+        EMOTE_BROADCAST, etc.) to the RemoteGameAdapter.
+
+        .. note::
+            TODO (PR-09 WS client bootstrap): wired from RoomLobbyScene after
+            MATCH_START is received and the GameScene is constructed.
+        """
+        self._network_tick_callback = callback
+
+    def set_exit_match_callback(self, callback: Callable[[], None]) -> None:
+        """Register the function that sends MATCH_LEAVE to the server."""
+        self._exit_match_callback = callback
+
+    def _on_emote_selected(self, emote_id: str) -> None:
+        """
+        Internal callback wired to EmotePopup.
+
+        Always displays the emote immediately on the local player's panel
+        (seat 0) so single-player mode gives visual feedback.  In multiplayer
+        the send callback transmits it to the server; the server broadcast
+        then triggers show_emote() again via the adapter — the duplicate
+        display is harmless as it simply resets the TTL.
+        """
+        self.show_emote(self._get_my_seat(), emote_id)
+        if self._emote_send_callback is not None:
+            self._emote_send_callback(emote_id)
+
+    def show_emote(self, seat_index: int, emote_id: str) -> None:
+        """
+        Display an emote above the given seat's panel.
+
+        Called by the networking layer when an EMOTE_BROADCAST arrives, or
+        directly in tests.  Maps emote_id slug to an emoji string for display.
+        """
+        from fall_in.ui.emote_popup import EMOTE_CATALOG
+
+        emoji = emote_id  # fallback: show slug
+        for slug, em, _ in EMOTE_CATALOG:
+            if slug == emote_id:
+                emoji = em
+                break
+        self._emote_display[seat_index] = (emoji, self._emote_display_duration)
+
     def update(self, dt: float) -> None:
         """Update scene state."""
         if self.message_timer > 0:
             self.message_timer -= dt
+
+        # Network tick: pump WS client and route messages to the adapter.
+        if self._network_tick_callback is not None:
+            self._network_tick_callback()
+
+        # Sync eliminated state to settings popup (so exit button label updates)
+        if self._remote_adapter is not None:
+            self._settings_popup.set_eliminated(self._is_local_player_eliminated())
+
+        # Drain incoming emotes from RemoteGameAdapter (multiplayer only)
+        if self._remote_adapter is not None:
+            for seat_index, emote_id in self._remote_adapter.pop_pending_emotes():
+                self.show_emote(seat_index, emote_id)
+
+        # Decay emote display TTLs
+        expired = [s for s, (_, ttl) in self._emote_display.items() if ttl - dt <= 0]
+        for s in expired:
+            del self._emote_display[s]
+        for s in list(self._emote_display):
+            if s not in expired:
+                emoji, ttl = self._emote_display[s]
+                self._emote_display[s] = (emoji, ttl - dt)
+
+        if self._remote_adapter is not None:
+            self._advance_remote_reveal(dt)
+            if self._update_remote_match_flow(dt):
+                return
+            if self.screen_shake_timer > 0:
+                self.screen_shake_timer -= dt
+                intensity = self.screen_shake_intensity
+                self.screen_shake_offset = (
+                    random.randint(-intensity, intensity),
+                    random.randint(-intensity, intensity),
+                )
+                if self.screen_shake_timer <= 0:
+                    self.screen_shake_offset = (0, 0)
+
+            self.dust_effect.update(dt)
+
+            board_rows = self._get_display_board_rows()
+            for row_idx in range(min(NUM_ROWS, len(board_rows))):
+                for col in range(len(board_rows[row_idx])):
+                    card = board_rows[row_idx][col]
+                    if card.number in self.soldier_figures:
+                        figure = self.soldier_figures[card.number]
+                        spawn_dust, trigger_shake = figure.update(dt)
+
+                        if spawn_dust or trigger_shake:
+                            visual_col = MAX_CARDS_PER_ROW - col
+                            iso_x, iso_y = self._cart_to_iso(visual_col, row_idx)
+
+                            if spawn_dust:
+                                self.dust_effect.spawn(
+                                    iso_x, iso_y, figure.get_dust_count()
+                                )
+                                # Play danger-level SFX on tile landing
+                                from fall_in.core.audio_manager import AudioManager
+
+                                danger = card.danger
+                                sfx_map = {
+                                    1: "sfx/drop_danger_1.wav",
+                                    2: "sfx/drop_danger_2.wav",
+                                    3: "sfx/drop_danger_3.wav",
+                                    5: "sfx/drop_danger_5.mp3",
+                                    7: "sfx/drop_danger_7.mp3",
+                                }
+                                sfx_path = sfx_map.get(danger)
+                                if sfx_path:
+                                    AudioManager().play_sfx(sfx_path)
+                                # Trigger commander reaction on landing
+                                self.commander.react_to_soldier(card.danger)
+                            if trigger_shake:
+                                self.screen_shake_intensity = (
+                                    figure.get_shake_intensity()
+                                )
+                                self.screen_shake_timer = SCREEN_SHAKE_DURATION
+
+            committed = self._get_local_committed_score()
+            self.commander.set_expression_from_danger(committed)
+            self.commander.update(dt)
+            return
 
         # Screen shake
         if self.screen_shake_timer > 0:
@@ -1293,20 +2409,11 @@ class GameScene(Scene, DebugOverlayMixin):
 
         # Turn timer during selection
         if self.phase == GamePhase.SELECTING:
-            self.turn_timer -= dt
-            # Timeout SFX every second when <= 5s
-            if self.turn_timer <= 5.0 and self._timeout_sfx is not None:
-                current_tick = int(self.turn_timer)
-                if current_tick != self._last_timeout_tick and self.turn_timer > 0:
-                    self._last_timeout_tick = current_tick
-                    self._timeout_sfx.play()
-            if self.turn_timer <= 0:
-                self._last_timeout_tick = -1
-                self._auto_select_card()
+            if self._consume_selection_timer(dt, on_timeout=self._auto_select_card):
                 return
 
         # Commander expression
-        committed = self.rules.get_player_committed_score(self.human_player)
+        committed = self._get_local_committed_score()
         self.commander.set_expression_from_danger(committed)
         self.commander.update(dt)
 
@@ -1363,27 +2470,36 @@ class GameScene(Scene, DebugOverlayMixin):
         self._draw_penalty_animation(screen)
 
         # Timer & hint during selection
-        if self.phase == GamePhase.SELECTING:
+        if self._should_show_selection_ui():
             self._draw_turn_timer(screen)
-            hint = get_font(14).render(
-                "카드를 클릭하여 선택, 다시 클릭 또는 [SPACE]로 확정",
-                True,
-                AIR_FORCE_BLUE,
-            )
-            hint_x = SCREEN_WIDTH // 2 - hint.get_width() // 2
-            hint_y = UI_TOP_BAR_HEIGHT + 5
-            # White background pill for readability
-            pill_w = hint.get_width() + 16
-            pill_h = hint.get_height() + 6
-            hint_bg = pygame.Surface((pill_w, pill_h), pygame.SRCALPHA)
-            pygame.draw.rect(
-                hint_bg,
-                (255, 255, 255, 200),
-                (0, 0, pill_w, pill_h),
-                border_radius=4,
-            )
-            screen.blit(hint_bg, (hint_x - 8, hint_y - 3))
-            screen.blit(hint, (hint_x, hint_y))
+            if self._is_waiting_for_other_players():
+                self._draw_waiting_dialog(screen)
+            else:
+                hint = get_font(14).render(
+                    "카드를 클릭하여 선택, 다시 클릭 또는 [SPACE]로 확정",
+                    True,
+                    AIR_FORCE_BLUE,
+                )
+                hint_x = SCREEN_WIDTH // 2 - hint.get_width() // 2
+                hint_y = UI_TOP_BAR_HEIGHT + 5
+                pill_w = hint.get_width() + 16
+                pill_h = hint.get_height() + 6
+                hint_bg = pygame.Surface((pill_w, pill_h), pygame.SRCALPHA)
+                pygame.draw.rect(
+                    hint_bg,
+                    (255, 255, 255, 200),
+                    (0, 0, pill_w, pill_h),
+                    border_radius=4,
+                )
+                screen.blit(hint_bg, (hint_x - 8, hint_y - 3))
+                screen.blit(hint, (hint_x, hint_y))
+
+        # Eliminated spectator banner (multiplayer only)
+        if (
+            self._is_local_player_eliminated()
+            and not self._has_remote_round_result_overlay()
+        ):
+            self._draw_eliminated_banner(screen)
 
         # Settings gear button (top-right)
         sx, sy = self._settings_btn_center
@@ -1406,6 +2522,12 @@ class GameScene(Scene, DebugOverlayMixin):
         # Debug overlay (via mixin)
         self.draw_debug_overlay(screen)
 
+        # Emote popup palette (PR-07) — rendered above everything except settings
+        self._emote_popup.render(screen)
+
+        if self._has_remote_round_result_overlay():
+            self._draw_remote_round_result_overlay(screen)
+
         # Settings popup (always last — modal overlay)
         self._settings_popup.render(screen)
 
@@ -1423,6 +2545,162 @@ class GameScene(Scene, DebugOverlayMixin):
 
         draw_outlined_text(
             screen, f"{seconds}s", timer_font, (280, 20), color, TOP_BAR_OUTLINE_COLOR
+        )
+
+    def _get_round_ready_button_rect(self) -> pygame.Rect:
+        return pygame.Rect(SCREEN_WIDTH // 2 - 95, SCREEN_HEIGHT // 2 + 158, 190, 48)
+
+    def _draw_waiting_dialog(self, screen: pygame.Surface) -> None:
+        dots = "." * (int(pygame.time.get_ticks() / 400) % 4)
+        font = get_font(18, "bold")
+        small_font = get_font(14)
+        title = font.render(f"다른 플레이어의 선택을 기다리는 중{dots}", True, WHITE)
+        subtitle = small_font.render(
+            "모든 플레이어가 카드를 고르면 배치가 시작됩니다.", True, WHITE
+        )
+
+        box_w = max(title.get_width(), subtitle.get_width()) + 36
+        box_h = title.get_height() + subtitle.get_height() + 30
+        rect = pygame.Rect(0, 0, box_w, box_h)
+        rect.center = (SCREEN_WIDTH // 2, UI_TOP_BAR_HEIGHT + 48)
+
+        overlay = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
+        overlay.fill((20, 36, 56, 215))
+        screen.blit(overlay, rect.topleft)
+        pygame.draw.rect(screen, LIGHT_BLUE, rect, width=2, border_radius=10)
+        screen.blit(title, title.get_rect(center=(rect.centerx, rect.y + 22)))
+        screen.blit(subtitle, subtitle.get_rect(center=(rect.centerx, rect.y + 48)))
+
+    def _draw_eliminated_banner(self, screen: pygame.Surface) -> None:
+        """Draw a spectator banner for an eliminated player."""
+        font = get_font(18, "bold")
+        small_font = get_font(14)
+        title = font.render("탈락 - 관전 중", True, (255, 100, 100))
+        subtitle = small_font.render("위험도 66점 초과로 탈락했습니다.", True, WHITE)
+
+        box_w = max(title.get_width(), subtitle.get_width()) + 36
+        box_h = title.get_height() + subtitle.get_height() + 30
+        rect = pygame.Rect(0, 0, box_w, box_h)
+        rect.center = (SCREEN_WIDTH // 2, UI_TOP_BAR_HEIGHT + 48)
+
+        overlay = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
+        overlay.fill((56, 20, 20, 215))
+        screen.blit(overlay, rect.topleft)
+        pygame.draw.rect(screen, (255, 100, 100), rect, width=2, border_radius=10)
+        screen.blit(title, title.get_rect(center=(rect.centerx, rect.y + 22)))
+        screen.blit(subtitle, subtitle.get_rect(center=(rect.centerx, rect.y + 48)))
+
+    def _draw_remote_round_result_overlay(self, screen: pygame.Surface) -> None:
+        result = self._remote_round_result
+        if result is None:
+            return
+
+        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        overlay.fill((8, 14, 22, 180))
+        screen.blit(overlay, (0, 0))
+
+        panel = pygame.Rect(0, 0, 760, 470)
+        panel.center = (SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2)
+        panel_surface = pygame.Surface((panel.width, panel.height), pygame.SRCALPHA)
+        panel_surface.fill((22, 34, 48, 235))
+        screen.blit(panel_surface, panel.topleft)
+        pygame.draw.rect(screen, LIGHT_BLUE, panel, width=3, border_radius=16)
+
+        title_font = get_font(34, "bold")
+        header_font = get_font(20, "bold")
+        body_font = get_font(18)
+        small_font = get_font(15)
+
+        title = title_font.render(
+            f"라운드 {result.get('round_number', '?')} 정산", True, WHITE
+        )
+        screen.blit(title, title.get_rect(center=(panel.centerx, panel.y + 42)))
+
+        public = self._get_public_state()
+        seats = (
+            sorted(public.seats, key=lambda seat: seat.seat_index)
+            if public is not None
+            else []
+        )
+        col_x = [panel.x + 70, panel.x + 320, panel.x + 460, panel.x + 610]
+        header_y = panel.y + 95
+        headers = ["플레이어", "이번 라운드", "누적 위험도", "상태"]
+        for idx, header in enumerate(headers):
+            header_surf = header_font.render(header, True, WHITE)
+            screen.blit(header_surf, (col_x[idx], header_y))
+        pygame.draw.line(
+            screen,
+            LIGHT_BLUE,
+            (panel.x + 45, header_y + 34),
+            (panel.right - 45, header_y + 34),
+            2,
+        )
+
+        round_danger = result.get("round_danger", {})
+        total_scores = result.get("total_scores", {})
+        eliminated = set(result.get("eliminated_seats", []))
+        row_y = header_y + 56
+        row_height = 58
+
+        for seat in seats:
+            is_local = seat.seat_index == self._get_my_seat()
+            label = "나" if is_local else seat.display_name
+            if seat.controller_type.name == "BOT":
+                label = seat.display_name
+
+            if seat.seat_index in eliminated:
+                bg = pygame.Surface((panel.width - 90, row_height - 8), pygame.SRCALPHA)
+                bg.fill((120, 32, 32, 105))
+                screen.blit(bg, (panel.x + 45, row_y - 6))
+
+            screen.blit(body_font.render(label, True, WHITE), (col_x[0], row_y))
+
+            round_value = int(round_danger.get(seat.seat_index, 0))
+            round_color = DANGER_DANGER if round_value > 0 else DANGER_SAFE
+            round_text = f"+{round_value}" if round_value > 0 else "0"
+            screen.blit(
+                body_font.render(round_text, True, round_color), (col_x[1], row_y)
+            )
+
+            total_value = int(total_scores.get(seat.seat_index, 0))
+            total_color = get_danger_color(total_value)
+            screen.blit(
+                body_font.render(f"{total_value}/{GAME_OVER_SCORE}", True, total_color),
+                (col_x[2], row_y),
+            )
+
+            if seat.seat_index in eliminated:
+                status = "탈락"
+                status_color = DANGER_DANGER
+            else:
+                status = "생존"
+                status_color = DANGER_SAFE
+            screen.blit(body_font.render(status, True, status_color), (col_x[3], row_y))
+            row_y += row_height
+
+        countdown = max(0, int(self._remote_round_result_timer + 0.999))
+        if self._remote_round_result_acknowledged:
+            footer_text = "확인 완료. 다른 플레이어를 기다리는 중..."
+        elif result.get("game_over"):
+            footer_text = f"{countdown}초 후 최종 결과 화면으로 이동합니다."
+        else:
+            footer_text = f"{countdown}초 후 자동으로 다음 라운드가 시작됩니다."
+        footer = small_font.render(footer_text, True, WHITE)
+        screen.blit(footer, footer.get_rect(center=(panel.centerx, panel.bottom - 118)))
+
+        btn_rect = self._get_round_ready_button_rect()
+        btn_color = (
+            (90, 120, 150) if self._remote_round_result_acknowledged else AIR_FORCE_BLUE
+        )
+        pygame.draw.rect(screen, btn_color, btn_rect, border_radius=10)
+        pygame.draw.rect(screen, WHITE, btn_rect, width=2, border_radius=10)
+        btn_label = "확인 완료" if self._remote_round_result_acknowledged else "확인"
+        btn_text = header_font.render(btn_label, True, WHITE)
+        screen.blit(btn_text, btn_text.get_rect(center=btn_rect.center))
+
+        shortcut = small_font.render("[ENTER] 또는 [SPACE]로 확인", True, WHITE)
+        screen.blit(
+            shortcut, shortcut.get_rect(center=(panel.centerx, panel.bottom - 24))
         )
 
     def _draw_dealing_animation(self, screen: pygame.Surface) -> None:

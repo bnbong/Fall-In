@@ -46,3 +46,9 @@ ingame_base.png
 
 # Logs
 *.log
+
+# DB
+*.db
+
+# env
+.env

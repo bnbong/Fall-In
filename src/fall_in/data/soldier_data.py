@@ -105,24 +105,61 @@ class SoldierDataManager:
             pass  # No save file yet
 
     def save_collected_state(self) -> None:
-        """Save collected soldier IDs to file."""
+        """Save collected soldier IDs to local file.
+
+        Skipped for registered users — the server DB is the source of truth.
+        """
+        from fall_in.core.game_manager import GameManager
+
+        if not GameManager()._use_local_storage:
+            return
+
         save_path = self._get_save_path()
-
         data = {"collected_ids": sorted(list(self.collected_ids))}
-
         with open(save_path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
+
+    def replace_collected_state(
+        self,
+        collected_ids: set[int],
+        *,
+        persist: bool = True,
+    ) -> None:
+        """Replace the full collected snapshot in memory.
+
+        Args:
+            collected_ids: The authoritative set of collected IDs.
+            persist: If True, write to local file. False when the server
+                     is the source of truth (registered users).
+        """
+        self.collected_ids = set(collected_ids)
+        for soldier in self.soldiers.values():
+            soldier.is_collected = soldier.id in self.collected_ids
+        if persist:
+            self.save_collected_state()
 
     def get_soldier(self, soldier_id: int) -> Optional[SoldierInfo]:
         """Get soldier info by ID"""
         return self.soldiers.get(soldier_id)
 
     def collect_soldier(self, soldier_id: int) -> bool:
-        """Mark soldier as collected and save state"""
+        """Mark soldier as collected.
+
+        Updates in-memory state immediately. For guests, persists to local
+        file. For registered users, syncs to server (no local file write).
+        """
         if soldier_id in self.soldiers:
             self.soldiers[soldier_id].is_collected = True
             self.collected_ids.add(soldier_id)
-            self.save_collected_state()
+            self.save_collected_state()  # no-op for registered users
+            try:
+                from fall_in.core.game_manager import GameManager
+
+                game = GameManager()
+                game.collected_soldiers = set(self.collected_ids)
+                game.sync_registered_unlock_async(soldier_id)
+            except Exception:
+                pass
             return True
         return False
 

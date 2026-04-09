@@ -2,6 +2,9 @@
 Result Scene - Round settlement screen showing penalties and scores.
 """
 
+from dataclasses import dataclass
+from typing import Callable, Optional
+
 import pygame
 
 from fall_in.scenes.base_scene import Scene
@@ -30,38 +33,63 @@ from fall_in.config import (
 )
 
 
+@dataclass
+class RemoteResultContext:
+    round_result: dict
+    public_state: object
+    remote_adapter: object
+    resume_scene: object
+    network_tick_callback: Optional[Callable[[], None]]
+    round_ready_callback: Optional[Callable[[], None]]
+
+
 class ResultScene(Scene):
     """
     Round result/settlement scene.
     Shows penalties earned this round and cumulative scores.
     """
 
-    def __init__(self, rules: GameRules, players: list[Player]):
+    def __init__(
+        self,
+        rules: Optional[GameRules] = None,
+        players: Optional[list[Player]] = None,
+        *,
+        remote_context: Optional[RemoteResultContext] = None,
+    ):
         super().__init__()
         self.rules = rules
-        self.players = players
-        self.round_number = rules.round_state.round_number
+        self.players = players or []
+        self._remote_context = remote_context
+        self._remote_timeout_remaining = 0.0
+        self._remote_acknowledged = False
 
-        # Track human player's penalty cards for smuggling
-        self.human_player = next(
-            (p for p in players if p.player_type == PlayerType.HUMAN), None
-        )
+        if self._remote_context is None:
+            if self.rules is None or not self.players:
+                raise ValueError("Local ResultScene requires rules and players")
+            self.round_number = self.rules.round_state.round_number
 
-        # Get penalty cards before committing scores
-        self.human_penalty_cards: list[Card] = []
-        if self.human_player:
-            round_penalties = rules.get_round_penalties()
-            human_penalty = round_penalties.get(self.human_player.player_id)
-            if human_penalty:
-                self.human_penalty_cards = list(human_penalty.cards_taken)
+            # Track human player's penalty cards for smuggling
+            self.human_player = next(
+                (p for p in self.players if p.player_type == PlayerType.HUMAN), None
+            )
 
-        # Calculate scores (this commits the penalties)
-        self.round_results = rules.commit_round_scores()
+            # Get penalty cards before committing scores
+            self.human_penalty_cards: list[Card] = []
+            if self.human_player:
+                round_penalties = self.rules.get_round_penalties()
+                human_penalty = round_penalties.get(self.human_player.player_id)
+                if human_penalty:
+                    self.human_penalty_cards = list(human_penalty.cards_taken)
 
-        # Check for eliminations
-        self.eliminated_players = [p for p in players if p.is_eliminated]
-        self.game_over = rules.game_over
-        self.winner = rules.winner
+            # Calculate scores (this commits the penalties)
+            self.round_results = self.rules.commit_round_scores()
+
+            # Check for eliminations
+            self.eliminated_players = [p for p in self.players if p.is_eliminated]
+            self.game_over = self.rules.game_over
+            self.winner = self.rules.winner
+        else:
+            self._init_remote_result()
 
         # Buttons
         self.buttons: list[Button] = []
@@ -86,12 +114,111 @@ class ResultScene(Scene):
 
         AudioManager().stop_bgm()
 
+    @classmethod
+    def from_remote(
+        cls,
+        *,
+        round_result: dict,
+        public_state: object,
+        remote_adapter: object,
+        resume_scene: object,
+        network_tick_callback: Optional[Callable[[], None]],
+        round_ready_callback: Optional[Callable[[], None]],
+    ) -> "ResultScene":
+        return cls(
+            remote_context=RemoteResultContext(
+                round_result=dict(round_result),
+                public_state=public_state,
+                remote_adapter=remote_adapter,
+                resume_scene=resume_scene,
+                network_tick_callback=network_tick_callback,
+                round_ready_callback=round_ready_callback,
+            )
+        )
+
+    def _init_remote_result(self) -> None:
+        """Populate scene state from server-authoritative multiplayer data."""
+        assert self._remote_context is not None
+
+        public = self._remote_context.public_state
+        data = dict(self._remote_context.round_result)
+        my_seat = self._remote_context.remote_adapter.my_seat
+        self.round_number = int(data.get("round_number", public.round_number))
+        self.human_penalty_cards = []
+        self.round_results = {
+            int(seat_index): (
+                int(value),
+                int(
+                    data.get("total_scores", {}).get(
+                        str(seat_index), data.get("total_scores", {}).get(seat_index, 0)
+                    )
+                ),
+            )
+            for seat_index, value in (data.get("round_danger") or {}).items()
+        }
+
+        # Ensure every visible seat has a score tuple, even if round_danger omitted it.
+        for seat in public.seats:
+            current = self.round_results.get(seat.seat_index)
+            if current is None:
+                total = int(
+                    (data.get("total_scores") or {}).get(
+                        seat.seat_index,
+                        (data.get("total_scores") or {}).get(str(seat.seat_index), 0),
+                    )
+                )
+                self.round_results[seat.seat_index] = (0, total)
+
+        self.players = []
+        for seat in sorted(public.seats, key=lambda item: item.seat_index):
+            player = Player(
+                name="나" if seat.seat_index == my_seat else seat.display_name,
+                player_type=PlayerType.HUMAN
+                if seat.seat_index == my_seat
+                else PlayerType.AI,
+                player_id=seat.seat_index,
+            )
+            _, total = self.round_results.get(seat.seat_index, (0, 0))
+            player.penalty_score = total
+            player.is_eliminated = seat.seat_index in {
+                int(value) for value in data.get("eliminated_seats", [])
+            }
+            self.players.append(player)
+
+        self.human_player = next(
+            (player for player in self.players if player.player_id == my_seat),
+            None,
+        )
+        self.eliminated_players = [p for p in self.players if p.is_eliminated]
+        self.game_over = bool(data.get("game_over", False))
+        winner_seat = data.get("winner_seat")
+        if winner_seat is not None:
+            winner_seat = int(winner_seat)
+        self.winner = next(
+            (player for player in self.players if player.player_id == winner_seat),
+            None,
+        )
+        self._remote_timeout_remaining = float(data.get("timeout_seconds", 0.0))
+
     def _setup_buttons(self) -> None:
         """Setup continue/title buttons."""
         button_width = SCENE_BUTTON_WIDTH
         button_height = SCENE_BUTTON_HEIGHT
         button_x = SCREEN_WIDTH // 2 - button_width // 2
         button_y = SCREEN_HEIGHT - 80
+
+        if self._remote_context is not None:
+            self.buttons.append(
+                Button(
+                    x=button_x,
+                    y=button_y,
+                    width=button_width,
+                    height=button_height,
+                    text="확인",
+                    callback=self._confirm_remote_continue,
+                )
+            )
+            return
 
         if self.game_over:
             self.buttons.append(
@@ -182,6 +309,17 @@ class ResultScene(Scene):
         """Go to game over scene (optionally via smuggling)."""
         self._navigate_via_smuggling_or_direct(is_game_over=True)
 
+    def _confirm_remote_continue(self) -> None:
+        """Acknowledge the multiplayer settlement screen once per client."""
+        if self._remote_context is None or self._remote_acknowledged:
+            return
+        self._remote_acknowledged = True
+        if self.buttons:
+            self.buttons[0].text = "확인 완료"
+        callback = self._remote_context.round_ready_callback
+        if callback is not None:
+            callback()
+
     # ------------------------------------------------------------------
     # Event / Update / Render
     # ------------------------------------------------------------------
@@ -193,7 +331,9 @@ class ResultScene(Scene):
 
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_SPACE or event.key == pygame.K_RETURN:
-                if self.game_over:
+                if self._remote_context is not None:
+                    self._confirm_remote_continue()
+                elif self.game_over:
                     self._go_to_game_over()
                 else:
                     self._continue_game()
@@ -202,6 +342,45 @@ class ResultScene(Scene):
         """Update scene."""
         for button in self.buttons:
             button.update(dt)
+
+        if self._remote_context is None:
+            return
+
+        if self._remote_context.network_tick_callback is not None:
+            self._remote_context.network_tick_callback()
+
+        self._remote_timeout_remaining = max(0.0, self._remote_timeout_remaining - dt)
+        if self._remote_timeout_remaining <= 0.0 and not self._remote_acknowledged:
+            self._confirm_remote_continue()
+
+        pop_match_result = getattr(
+            self._remote_context.remote_adapter, "pop_match_result", None
+        )
+        if callable(pop_match_result):
+            match_result = pop_match_result()
+            if match_result is not None:
+                self._remote_context.resume_scene._go_to_remote_game_over(match_result)
+                return
+
+        consume_selecting = getattr(
+            self._remote_context.remote_adapter,
+            "consume_selecting_phase_started",
+            None,
+        )
+        if callable(consume_selecting):
+            remaining = consume_selecting()
+            if remaining is not None:
+                self._remote_context.resume_scene._reset_remote_selecting_phase(
+                    remaining
+                )
+                from fall_in.core.audio_manager import AudioManager
+                from fall_in.core.game_manager import GameManager, GameState
+                from fall_in.config import GAME_BGM_PATH
+
+                AudioManager().play_bgm(GAME_BGM_PATH)
+                gm = GameManager()
+                gm.state = GameState.PLAYING
+                gm.change_scene(self._remote_context.resume_scene)
 
     def render(self, screen: pygame.Surface) -> None:
         """Render result screen."""
@@ -351,8 +530,30 @@ class ResultScene(Scene):
             button.render(screen)
 
         # Hint
-        hint_text = small_font.render("[SPACE] 또는 버튼 클릭으로 계속", True, WHITE)
+        if self._remote_context is None:
+            hint_label = "[SPACE] 또는 버튼 클릭으로 계속"
+        elif self._remote_acknowledged:
+            hint_label = "다른 플레이어를 기다리는 중..."
+        else:
+            hint_label = "[SPACE] 또는 버튼 클릭으로 확인"
+        hint_text = small_font.render(hint_label, True, WHITE)
         screen.blit(
             hint_text,
             (SCREEN_WIDTH // 2 - hint_text.get_width() // 2, SCREEN_HEIGHT - 30),
         )
+
+        if self._remote_context is not None:
+            info_font = get_font(16)
+            countdown = max(0, int(self._remote_timeout_remaining + 0.999))
+            countdown_label = (
+                f"자동 진행까지 {countdown}초"
+                if not self._remote_acknowledged
+                else f"다음 단계 대기 중 ({countdown}초)"
+            )
+            countdown_surf = info_font.render(countdown_label, True, WHITE)
+            screen.blit(
+                countdown_surf,
+                countdown_surf.get_rect(
+                    center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT - 120)
+                ),
+            )
