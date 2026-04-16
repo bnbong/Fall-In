@@ -120,7 +120,7 @@ jobs:
       # ── Upload to GitHub Release (release trigger only) ───────────────────
       - name: Upload to GitHub Release
         if: github.event_name == 'release'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: fall-in-${{ env.VERSION }}-*
 
@@ -193,6 +193,6 @@ jobs:
       # ── Upload to GitHub Release (release trigger only) ───────────────────
       - name: Upload to GitHub Release
         if: github.event_name == 'release'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: fall-in-${{ env.VERSION }}-web.zip
